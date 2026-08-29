@@ -10,6 +10,7 @@ import {
   clamp,
   detectScales,
   mapStickPositions,
+  readToggleState,
   timeToRowIndex
 } from "../src/render/stickMapping.js";
 
@@ -71,6 +72,60 @@ test("mapStickPositions keeps full deflection at the standard ±500 range", () =
 
   assert.deepEqual(positions.right, { x: 1, y: 0 });
   assert.deepEqual(positions.left, { x: -1, y: 0 });
+});
+
+test("readToggleState: armed = rcCommand[4], throttle = collective > 0", () => {
+  // [roll, pitch, yaw, collective, time, arm]
+  const flight = makeFlight(
+    [
+      "rcCommand[0]",
+      "rcCommand[1]",
+      "rcCommand[2]",
+      "rcCommand[3]",
+      "time",
+      "rcCommand[4]"
+    ],
+    [
+      [0, 0, 0, 0, 0, 0],        // disarmed, no throttle
+      [0, 0, 0, 50, 1000, 1000], // armed, throttle on
+      [0, 0, 0, 0, 2000, 1000],  // armed, throttle idle
+      [0, 0, 0, -20, 3000, 0]    // disarmed, negative collective
+    ]
+  );
+
+  const binding = detectScales(flight);
+
+  assert.deepEqual(readToggleState(flight.mainFrames[0], binding), {
+    armed: false,
+    throttle: false
+  });
+  assert.deepEqual(readToggleState(flight.mainFrames[1], binding), {
+    armed: true,
+    throttle: true
+  });
+  assert.deepEqual(readToggleState(flight.mainFrames[2], binding), {
+    armed: true,
+    throttle: false
+  });
+  // Collective below zero is still "above 0"? No — strictly above.
+  assert.deepEqual(readToggleState(flight.mainFrames[3], binding), {
+    armed: false,
+    throttle: false
+  });
+});
+
+test("readToggleState without an arm channel never arms", () => {
+  const flight = makeFlight(
+    ["rcCommand[0]", "rcCommand[1]", "rcCommand[2]", "rcCommand[3]", "time"],
+    [[0, 0, 0, 100, 0]]
+  );
+
+  const binding = detectScales(flight);
+
+  assert.deepEqual(readToggleState(flight.mainFrames[0], binding), {
+    armed: false,
+    throttle: true
+  });
 });
 
 test("timeToRowIndex finds the nearest frame by binary search", () => {

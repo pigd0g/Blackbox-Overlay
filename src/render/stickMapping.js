@@ -21,6 +21,11 @@ export const REQUIRED_FIELDS = [
   "time"
 ];
 
+// Optional channels used by the on-screen toggles:
+//   rcCommand[4] — arming channel (0 = disarmed, high = armed)
+//   rcCommand[3] — collective doubles as throttle indicator
+export const ARM_CHANNEL = "rcCommand[4]";
+
 // The log states its own deflection range: RF logs use ±500
 // for every rcCommand axis, but nothing is assumed — the
 // observed extreme decides, with 500 as the floor so a calm
@@ -69,7 +74,8 @@ export function detectScales(flight) {
       pitch: columns[1].index,
       yaw: columns[2].index,
       collective: columns[3].index,
-      time: columns[4].index
+      time: columns[4].index,
+      arm: flight.mainFieldNames.indexOf(ARM_CHANNEL)
     },
     scales: {
       roll: detectScale(columns[0].values),
@@ -77,6 +83,23 @@ export function detectScales(flight) {
       yaw: detectScale(columns[2].values),
       collective: detectScale(columns[3].values)
     }
+  };
+}
+
+/**
+ * Toggle states for one main frame:
+ *   armed    — arming channel rcCommand[4] is high (non-zero)
+ *   throttle — collective stick (rcCommand[3]) above 0
+ */
+export function readToggleState(frame, binding) {
+  const { columnIndexes } = binding;
+  const arm =
+    columnIndexes.arm >= 0 ? Number(frame[columnIndexes.arm]) || 0 : 0;
+  const collective = Number(frame[columnIndexes.collective]) || 0;
+
+  return {
+    armed: arm > 0,
+    throttle: collective > 0
   };
 }
 

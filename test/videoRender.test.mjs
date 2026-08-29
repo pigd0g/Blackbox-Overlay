@@ -83,7 +83,7 @@ test("renderStickVideo produces a valid mp4", { skip: !canRender }, async () => 
     assert.ok(video, "no video stream");
 
     assert.equal(video.width, 500);
-    assert.equal(video.height, 250);
+    assert.equal(video.height, 300);
     assert.equal(video.codec_name, "h264");
     assert.equal(Number(probe.format.duration).toFixed(1), "1.0");
   } finally {

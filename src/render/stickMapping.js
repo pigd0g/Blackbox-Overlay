@@ -33,6 +33,10 @@ const ARM_FLAG_BIT = 1;
 const FLIGHT_MODE_FLAGS = "flightModeFlags";
 const MOTOR_FIELD = "motor[0]";
 
+// Telemetry feeds for the status bar.
+const VBAT_FIELD = "Vbat";
+const HEADSPEED_FIELD = "headspeed";
+
 // The log states its own deflection range: RF logs use ±500
 // for every rcCommand axis, but nothing is assumed — the
 // observed extreme decides, with 500 as the floor so a calm
@@ -87,7 +91,9 @@ export function detectScales(flight) {
       // Fallback keeps Betaflight-style logs working: there
       // rcCommand[3] IS the throttle channel.
       throttle: throttleIndex >= 0 ? throttleIndex : columns[3].index,
-      motor: flight.mainFieldNames.indexOf(MOTOR_FIELD)
+      motor: flight.mainFieldNames.indexOf(MOTOR_FIELD),
+      vbat: flight.mainFieldNames.indexOf(VBAT_FIELD),
+      headspeed: flight.mainFieldNames.indexOf(HEADSPEED_FIELD)
     },
     slowColumnIndexes: {
       flightModeFlags: flight.slowFieldNames

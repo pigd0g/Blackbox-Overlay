@@ -16,12 +16,8 @@ import { dirname } from "node:path";
 
 import { WIDTH, HEIGHT, paintStickFrame } from "./gimbalFrame.js";
 import { VideoWriter, checkFfmpegAvailable } from "./videoWriter.js";
-import {
-  detectScales,
-  mapStickPositions,
-  readToggleState,
-  timeToRowIndex
-} from "./stickMapping.js";
+import { detectScales, mapStickPositions, readToggleState, timeToRowIndex } from "./stickMapping.js";
+import { readTelemetry } from "./telemetry.js";
 
 export const DEFAULT_FPS = 30;
 
@@ -122,7 +118,14 @@ export async function renderStickVideo(flight, outputPath, options = {}) {
 
       const mainFrame = flight.mainFrames[row];
       const positions = mapStickPositions(mainFrame, binding);
-      const state = readToggleState(mainFrame, slowValues, binding);
+      const toggles = readToggleState(mainFrame, slowValues, binding);
+      const telemetry = readTelemetry(mainFrame, binding);
+      const state = {
+        throttle: toggles.throttle,
+        perCell: telemetry.perCell,
+        cellCount: telemetry.cellCount,
+        rpm: telemetry.rpm
+      };
 
       await writer.writeFrame(paintStickFrame(positions, state));
 

@@ -21,8 +21,8 @@ function colorAt(frame, x, y) {
 }
 
 const CENTER_POSITION = { left: { x: 0, y: 0 }, right: { x: 0, y: 0 } };
-const ALL_OFF = { armed: false, throttle: false };
-const ALL_ON = { armed: true, throttle: true };
+const ALL_OFF = { throttle: false, perCell: null, cellCount: null, rpm: null };
+const FULL_STATE = { throttle: true, perCell: 4.13, cellCount: 6, rpm: 1996 };
 
 test("frame buffer is 500 x 300 x 3 bytes", () => {
   const frame = paintStickFrame(CENTER_POSITION, ALL_OFF);
@@ -93,29 +93,35 @@ test("stick dots are #EE4266, radius 10 (twice the old 5)", () => {
   assert.deepEqual(colorAt(frame, dotX + 11, dotY), [0x40, 0x40, 0x40]);
 });
 
-test("toggle strips with live under each gimbal box", () => {
-  const frame = paintStickFrame(CENTER_POSITION, ALL_ON);
+test("throttle toggle lives under the left gimbal only", () => {
+  const frame = paintStickFrame(CENTER_POSITION, { ...ALL_OFF, throttle: true });
   const toggleY = HEIGHT - GIMBAL_LAYOUT.toggleSpace + 10;
 
-  for (const layout of [GIMBAL_LAYOUT.left, GIMBAL_LAYOUT.right]) {
-    // Track starts 8 px into the box width.
-    const trackX = layout.x0 + 8 + 10;
+  // Left: toggle track, green when on, clear of the knob
+  // (knob sits on the right half of the track in on state).
+  assert.deepEqual(
+    colorAt(frame, GIMBAL_LAYOUT.left.x0 + 8 + 4, toggleY + 10),
+    [0x2e, 0x7d, 0x32],
+    "left toggle track should be green when throttle is on"
+  );
 
-    assert.deepEqual(
-      colorAt(frame, trackX, toggleY + 10),
-      [0x2e, 0x7d, 0x32],
-      "toggle track should be green when on"
-    );
-  }
+  // Right side: RPM text zone, no toggle track. The area
+  // under the right gimbal away from any text is background.
+  assert.deepEqual(
+    colorAt(frame, GIMBAL_LAYOUT.right.x0 + 4, toggleY + 10),
+    [0xc6, 0xd8, 0xd3],
+    "right toggle must be gone (RPM readout lives there)"
+  );
 });
 
-test("toggles render off and on distinctly", () => {
-  const off = paintStickFrame(CENTER_POSITION, { armed: false, throttle: false });
-  const on = paintStickFrame(CENTER_POSITION, { armed: true, throttle: true });
+test("throttle toggle renders off and on distinctly", () => {
+  const off = paintStickFrame(CENTER_POSITION, ALL_OFF);
+  const on = paintStickFrame(CENTER_POSITION, { ...ALL_OFF, throttle: true });
 
   const toggleY = HEIGHT - GIMBAL_LAYOUT.toggleSpace + 10;
   // Sample inside the track but clear of the sliding knob
-  // (knob occupies 2..20 px from either end).
+  // (knob occupies the LEFT 20 px when off, the RIGHT 18 px
+  // when on — the middle of the track is safe in both).
   const trackX = GIMBAL_LAYOUT.left.x0 + 8 + 28;
   const sampleY = toggleY + 10;
 
@@ -133,31 +139,62 @@ test("pixelRect clips out-of-bounds writes safely", () => {
   });
 });
 
-test("pixel font renders ARMED label beside the toggle", () => {
-  const frame = paintStickFrame(CENTER_POSITION, { armed: true, throttle: false });
+test("pixel font renders THROTTLE label beside the toggle", () => {
+  const frame = paintStickFrame(CENTER_POSITION, { ...FULL_STATE, throttle: true });
 
   const toggleY = HEIGHT - GIMBAL_LAYOUT.toggleSpace + 10;
   const labelX = GIMBAL_LAYOUT.left.x0 + 8 + 56 + 10;
   const labelY = toggleY + Math.floor((22 - 14) / 2);
 
-  // The "A" of ARMED: row 3 is the full-width bar ("11111"),
-  // scale 2 → center pixel sits at labelX + 4..5, labelY + 6..7.
+  // "H" of THROTTLE: both vertical strokes are full-height
+  // ("10001"), scale 2 → the left stroke lands at labelX+4..5
+  // (5 px glyph + 1 px spacing × scale 2). Sample it.
   assert.deepEqual(
-    colorAt(frame, labelX + 4, labelY + 6),
+    colorAt(frame, labelX + 4, labelY + 2),
     [0x2e, 0x7d, 0x32],
-    "ARMED label should be green when armed"
+    "THROTTLE label should be green when on"
   );
 
-  // Right toggle is off: its THROTTLE label stays dark.
-  const rightLabelX = GIMBAL_LAYOUT.right.x0 + 8 + 56 + 10;
+  // RPM readout on the right must show the live value. The
+  // "R" glyph's left stroke ("11110"/"10001" rows) is lit the
+  // full height — sample its top-left.
+  const rpmLabel = "RPM 1996";
+  const rpmWidth = measureText(rpmLabel, 2);
+  const rpmX = WIDTH - rpmWidth - 12;
+
   assert.deepEqual(
-    colorAt(frame, rightLabelX + 4, labelY + 6),
-    [0x24, 0x24, 0x24]
+    colorAt(frame, rpmX, labelY + 2),
+    [0x6a, 0x38, 0x0e],
+    "RPM text should render in amber"
+  );
+
+  // Battery readout centered: "6S 4.13V". The "6" glyph's
+  // top bar ("00110" at scale 2) lights columns 2..5 on the
+  // first row — sample there.
+  const battLabel = "6S 4.13V";
+  const battWidth = measureText(battLabel, 2);
+  const battX = Math.floor(WIDTH / 2 - battWidth / 2);
+
+  assert.deepEqual(
+    colorAt(frame, battX + 4, labelY),
+    [0x1a, 0x53, 0x74],
+    "battery text should render in blue"
   );
 });
 
+test("no-data battery and RPM read as placeholders", () => {
+  const frame = paintStickFrame(CENTER_POSITION, ALL_OFF);
+
+  // "--" centered, in the muted grey. The dash bar is row 3
+  // of the 7-row glyph, scale 2 → labelY + 6..7.
+  const dashX = Math.floor(WIDTH / 2 - measureText("--", 2) / 2);
+  const dashY = HEIGHT - GIMBAL_LAYOUT.toggleSpace + 10 + 4 + 6;
+
+  assert.deepEqual(colorAt(frame, dashX + 2, dashY), [0x9e, 0x9e, 0x9e]);
+});
+
 test("bitmap font basics", () => {
-  assert.equal(measureText("ARMED", 2), 5 * 12 - 2);
+  assert.equal(measureText("THROTTLE", 2), 8 * 12 - 2);
   assert.ok(getGlyph("A"), "glyph A missing");
   assert.equal(getGlyph("@"), null, "unknown glyphs must return null");
 
@@ -168,6 +205,6 @@ test("bitmap font basics", () => {
 
   // Clipping: text off the edge must not throw.
   assert.doesNotThrow(() => {
-    pixelText(frame, WIDTH, HEIGHT, WIDTH - 2, HEIGHT - 2, "ARMED", [1, 2, 3], 2);
+    pixelText(frame, WIDTH, HEIGHT, WIDTH - 2, HEIGHT - 2, "THROTTLE", [1, 2, 3], 2);
   });
 });

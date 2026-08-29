@@ -20,7 +20,7 @@
 //
 // ======================================================
 
-import { pixelText } from "./bitmapFont.js";
+import { pixelText, measureText } from "./bitmapFont.js";
 
 export const WIDTH = 500;
 export const HEIGHT = 300;
@@ -35,6 +35,8 @@ const COLOR_TOGGLE_ON_BOX = [0x2e, 0x7d, 0x32]; // green when on
 const COLOR_TOGGLE_KNOB = [0xf5, 0xf5, 0xf5];
 const COLOR_TOGGLE_LABEL = [0x24, 0x24, 0x24];
 const COLOR_TOGGLE_LABEL_ON = [0x2e, 0x7d, 0x32];
+const COLOR_BATTERY_TEXT = [0x1a, 0x53, 0x74]; // deep blue
+const COLOR_RPM_TEXT = [0x6a, 0x38, 0x0e]; // dark amber
 
 export const GIMBAL_LAYOUT = (() => {
   const toggleSpace = 46; // bottom strip reserved for toggles
@@ -167,9 +169,12 @@ export function paintToggle(frame, x0, y0, isOn, label) {
 /**
  * Paint one full RGB frame.
  * Positions: { left: {x,y}, right: {x,y} } from mapStickPositions().
- * State:     { armed: boolean, throttle: boolean }.
+ * State:     { throttle: boolean, perCell, cellCount, rpm }.
  */
-export function paintStickFrame(positions, state = { armed: false, throttle: false }) {
+export function paintStickFrame(
+  positions,
+  state = { throttle: false, perCell: null, cellCount: null, rpm: null }
+) {
   const frame = new Uint8Array(WIDTH * HEIGHT * 3);
 
   pixelRect(frame, 0, 0, WIDTH, HEIGHT, COLOR_BACKGROUND);
@@ -178,22 +183,83 @@ export function paintStickFrame(positions, state = { armed: false, throttle: fal
   paintGimbal(frame, GIMBAL_LAYOUT.right, positions.right);
 
   const { toggleSpace } = GIMBAL_LAYOUT;
-  const toggleY = HEIGHT - toggleSpace + 10;
+  const barY = HEIGHT - toggleSpace + 10;
 
+  // Left: throttle toggle (where ARMED used to sit).
   paintToggle(
     frame,
     GIMBAL_LAYOUT.left.x0 + 8,
-    toggleY,
-    state.armed === true,
-    "ARMED"
-  );
-  paintToggle(
-    frame,
-    GIMBAL_LAYOUT.right.x0 + 8,
-    toggleY,
+    barY,
     state.throttle === true,
     "THROTTLE"
   );
 
+  // Center: battery volts per cell.
+  paintBattery(frame, barY, state.perCell, state.cellCount);
+
+  // Right: live RPM under the right gimbal.
+  paintRpm(frame, barY, state.rpm);
+
   return frame;
+}
+
+/**
+ * Battery readout centered between the two toggles:
+ * "6S 4.10V" — per-cell volts rounded to 2 decimals, cell
+ * count from the 1S–14S lipo rule. Dim when no Vbat data.
+ */
+function paintBattery(frame, barY, perCell, cellCount) {
+  const labelY = barY + 4;
+
+  if (perCell === null || cellCount === null) {
+    pixelText(
+      frame,
+      WIDTH,
+      HEIGHT,
+      Math.floor(WIDTH / 2 - 30),
+      labelY,
+      "--",
+      COLOR_TOGGLE_OFF_BOX,
+      2
+    );
+    return;
+  }
+
+  const volts = perCell.toFixed(2);
+  const label = `${cellCount}S ${volts}V`;
+
+  // Center the whole label on the frame midpoint.
+  const width = measureText(label, 2);
+
+  pixelText(
+    frame,
+    WIDTH,
+    HEIGHT,
+    Math.floor(WIDTH / 2 - width / 2),
+    labelY,
+    label,
+    COLOR_BATTERY_TEXT,
+    2
+  );
+}
+
+/**
+ * Live RPM readout on the right: "RPM 1996".
+ */
+function paintRpm(frame, barY, rpm) {
+  const labelY = barY + 4;
+  const label = rpm === null ? "RPM --" : `RPM ${Math.round(rpm)}`;
+
+  const width = measureText(label, 2);
+
+  pixelText(
+    frame,
+    WIDTH,
+    HEIGHT,
+    WIDTH - width - 12,
+    labelY,
+    label,
+    COLOR_RPM_TEXT,
+    2
+  );
 }

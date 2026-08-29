@@ -5,38 +5,27 @@
 // Paints one video frame as raw RGB24 bytes:
 //
 //   ┌────────────────────────────────────────────┐
-//   │  background (#C6D8D3)                      │
+//   │  background (theme)                        │
 //   │  ┌─────────┐        ┌─────────┐            │
 //   │  +  ·     │        │     ·  +│            │
 //   │  └─────────┘        └─────────┘            │
-//   │  [ Armed ]           [ Throttle ]          │
-//   │  toggle              toggle                │
+//   │  [Throttle]   6S 4.10V      RPM 1996       │
 //   └────────────────────────────────────────────┘
 //
-// Each gimbal: dark grey square with #92898A crosshair
-// axes and a #EE4266 stick-position dot. Left toggle reads
-// the log's arming channel; right toggle lights when the
-// throttle (collective) is above 0.
+// Each gimbal: theme-colored square with crosshair axes
+// and a stick-position dot. Below: throttle toggle left,
+// battery volts-per-cell center, live RPM right.
+//
+// All colors come from a theme object (themes.js); the
+// default palette applies when none is passed.
 //
 // ======================================================
 
 import { pixelText, measureText } from "./bitmapFont.js";
+import { THEMES } from "./themes.js";
 
 export const WIDTH = 500;
 export const HEIGHT = 300;
-
-const COLOR_BACKGROUND = [0xc6, 0xd8, 0xd3]; // pale sage
-const COLOR_BOX = [0x40, 0x40, 0x40]; // dark grey square
-const COLOR_CROSSHAIR = [0x92, 0x89, 0x8a]; // axis lines
-const COLOR_DOT = [0xee, 0x42, 0x66]; // stick dot
-
-const COLOR_TOGGLE_OFF_BOX = [0x9e, 0x9e, 0x9e];
-const COLOR_TOGGLE_ON_BOX = [0x2e, 0x7d, 0x32]; // green when on
-const COLOR_TOGGLE_KNOB = [0xf5, 0xf5, 0xf5];
-const COLOR_TOGGLE_LABEL = [0x24, 0x24, 0x24];
-const COLOR_TOGGLE_LABEL_ON = [0x2e, 0x7d, 0x32];
-const COLOR_BATTERY_TEXT = [0x1a, 0x53, 0x74]; // deep blue
-const COLOR_RPM_TEXT = [0x6a, 0x38, 0x0e]; // dark amber
 
 export const GIMBAL_LAYOUT = (() => {
   const toggleSpace = 46; // bottom strip reserved for toggles
@@ -157,19 +146,19 @@ export function pixelDot(frame, cx, cy, radius, color) {
 }
 
 /**
- * One gimbal: grey square, colored crosshair axes,
- * stick-position dot. Position: x right, y up in [-1, 1].
+ * One gimbal: theme square, crosshair axes, stick dot.
+ * Position: x right, y up in [-1, 1].
  */
-export function paintGimbal(frame, layout, position) {
+export function paintGimbal(frame, layout, position, theme) {
   const { x0, y0, size } = layout;
   const cx = x0 + size / 2;
   const cy = y0 + size / 2;
   const half = size / 2;
   const dotRadius = 10; // twice the original 5
 
-  pixelRectRounded(frame, x0, y0, size, size, CORNER_RADIUS_MD, COLOR_BOX);
-  pixelLineH(frame, x0 + CORNER_RADIUS_MD, x0 + size - 1 - CORNER_RADIUS_MD, cy, COLOR_CROSSHAIR);
-  pixelLineV(frame, cx, y0 + CORNER_RADIUS_MD, y0 + size - 1 - CORNER_RADIUS_MD, COLOR_CROSSHAIR);
+  pixelRectRounded(frame, x0, y0, size, size, CORNER_RADIUS_MD, theme.box);
+  pixelLineH(frame, x0 + CORNER_RADIUS_MD, x0 + size - 1 - CORNER_RADIUS_MD, cy, theme.crosshair);
+  pixelLineV(frame, cx, y0 + CORNER_RADIUS_MD, y0 + size - 1 - CORNER_RADIUS_MD, theme.crosshair);
 
   // Inset keeps the full-size dot inside the box even at
   // full deflection (radius + 4 px margin).
@@ -177,14 +166,14 @@ export function paintGimbal(frame, layout, position) {
   const dotX = Math.round(cx + position.x * inset);
   const dotY = Math.round(cy - position.y * inset);
 
-  pixelDot(frame, dotX, dotY, dotRadius, COLOR_DOT);
+  pixelDot(frame, dotX, dotY, dotRadius, theme.dot);
 }
 
 /**
  * A toggle switch: box with a sliding knob and the switch
- * name beside it. On = knob right + green track & label.
+ * name beside it. On = knob right + on-state colors.
  */
-export function paintToggle(frame, x0, y0, isOn, label) {
+export function paintToggle(frame, x0, y0, isOn, label, theme) {
   const trackWidth = 56;
   const trackHeight = 22;
   const knobSize = 18;
@@ -195,16 +184,16 @@ export function paintToggle(frame, x0, y0, isOn, label) {
     y0,
     trackWidth,
     trackHeight,
-    isOn ? COLOR_TOGGLE_ON_BOX : COLOR_TOGGLE_OFF_BOX
+    isOn ? theme.toggleOn : theme.toggleOff
   );
 
   const knobY = y0 + (trackHeight - knobSize) / 2;
   const knobX = isOn ? x0 + trackWidth - knobSize - 2 : x0 + 2;
 
-  pixelRect(frame, knobX, knobY, knobSize, knobSize, COLOR_TOGGLE_KNOB);
+  pixelRect(frame, knobX, knobY, knobSize, knobSize, theme.knob);
 
   // Switch name beside the track, 2x pixel font, dim when
-  // off and green when on.
+  // off and theme-on colored when on.
   const labelX = x0 + trackWidth + 10;
   const labelY = y0 + Math.floor((trackHeight - 14) / 2);
 
@@ -215,7 +204,7 @@ export function paintToggle(frame, x0, y0, isOn, label) {
     labelX,
     labelY,
     label,
-    isOn ? COLOR_TOGGLE_LABEL_ON : COLOR_TOGGLE_LABEL,
+    isOn ? theme.labelOn : theme.labelOff,
     2
   );
 }
@@ -224,45 +213,48 @@ export function paintToggle(frame, x0, y0, isOn, label) {
  * Paint one full RGB frame.
  * Positions: { left: {x,y}, right: {x,y} } from mapStickPositions().
  * State:     { throttle: boolean, perCell, cellCount, rpm }.
+ * Theme:     color set from themes.js (default when omitted).
  */
 export function paintStickFrame(
   positions,
-  state = { throttle: false, perCell: null, cellCount: null, rpm: null }
+  state = { throttle: false, perCell: null, cellCount: null, rpm: null },
+  theme = THEMES.default
 ) {
   const frame = new Uint8Array(WIDTH * HEIGHT * 3);
 
-  pixelRect(frame, 0, 0, WIDTH, HEIGHT, COLOR_BACKGROUND);
+  pixelRect(frame, 0, 0, WIDTH, HEIGHT, theme.background);
 
-  paintGimbal(frame, GIMBAL_LAYOUT.left, positions.left);
-  paintGimbal(frame, GIMBAL_LAYOUT.right, positions.right);
+  paintGimbal(frame, GIMBAL_LAYOUT.left, positions.left, theme);
+  paintGimbal(frame, GIMBAL_LAYOUT.right, positions.right, theme);
 
   const { toggleSpace } = GIMBAL_LAYOUT;
   const barY = HEIGHT - toggleSpace + 10;
 
-  // Left: throttle toggle (where ARMED used to sit).
+  // Left: throttle toggle.
   paintToggle(
     frame,
     GIMBAL_LAYOUT.left.x0 + 8,
     barY,
     state.throttle === true,
-    "THROTTLE"
+    "THROTTLE",
+    theme
   );
 
   // Center: battery volts per cell.
-  paintBattery(frame, barY, state.perCell, state.cellCount);
+  paintBattery(frame, barY, state.perCell, state.cellCount, theme);
 
   // Right: live RPM under the right gimbal.
-  paintRpm(frame, barY, state.rpm);
+  paintRpm(frame, barY, state.rpm, theme);
 
   return frame;
 }
 
 /**
- * Battery readout centered between the two toggles:
+ * Battery readout centered between the toggle and RPM:
  * "6S 4.10V" — per-cell volts rounded to 2 decimals, cell
  * count from the 1S–14S lipo rule. Dim when no Vbat data.
  */
-function paintBattery(frame, barY, perCell, cellCount) {
+function paintBattery(frame, barY, perCell, cellCount, theme) {
   const labelY = barY + 4;
 
   if (perCell === null || cellCount === null) {
@@ -273,7 +265,7 @@ function paintBattery(frame, barY, perCell, cellCount) {
       Math.floor(WIDTH / 2 - 30),
       labelY,
       "--",
-      COLOR_TOGGLE_OFF_BOX,
+      theme.toggleOff,
       2
     );
     return;
@@ -292,7 +284,7 @@ function paintBattery(frame, barY, perCell, cellCount) {
     Math.floor(WIDTH / 2 - width / 2),
     labelY,
     label,
-    COLOR_BATTERY_TEXT,
+    theme.battery,
     2
   );
 }
@@ -300,7 +292,7 @@ function paintBattery(frame, barY, perCell, cellCount) {
 /**
  * Live RPM readout on the right: "RPM 1996".
  */
-function paintRpm(frame, barY, rpm) {
+function paintRpm(frame, barY, rpm, theme) {
   const labelY = barY + 4;
   const label = rpm === null ? "RPM --" : `RPM ${Math.round(rpm)}`;
 
@@ -313,7 +305,7 @@ function paintRpm(frame, barY, rpm) {
     WIDTH - width - 12,
     labelY,
     label,
-    COLOR_RPM_TEXT,
+    theme.rpm,
     2
   );
 }

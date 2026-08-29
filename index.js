@@ -26,6 +26,7 @@ import {
   defaultVideoPath,
   checkFfmpegAvailable
 } from "./src/render/videoRender.js";
+import { resolveTheme, THEME_NAMES } from "./src/render/themes.js";
 
 function printUsage() {
   console.log(`gimbalvid — Rotorflight blackbox (.bbl) log reader
@@ -40,6 +41,8 @@ Options:
   --video [out.mp4] render a green-screen gimbal-stick video
                     (default: <logname>-sticks.mp4)
   --fps N           video frame rate (default 30)
+  --theme NAME      color theme for the video:
+                    ${THEME_NAMES.join(", ")} (default: default)
   --help            show this help`);
 }
 
@@ -49,7 +52,8 @@ function parseArgs(argv) {
     fields: false,
     json: false,
     video: null,
-    fps: null
+    fps: null,
+    theme: null
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -81,6 +85,19 @@ function parseArgs(argv) {
       }
 
       options.fps = value;
+    } else if (arg === "--theme") {
+      i += 1;
+      const name = argv[i];
+
+      if (!name) {
+        throw new Error(
+          `--theme expects a name: ${THEME_NAMES.join(", ")}`
+        );
+      }
+
+      // Validate early so a typo fails before any work.
+      resolveTheme(name);
+      options.theme = name.toLowerCase();
     } else if (arg === "--flight") {
       i += 1;
       const value = Number(argv[i]);
@@ -297,11 +314,14 @@ async function renderVideos(selected, options) {
         : defaultVideoPath(options.file);
 
     console.log(
-      `\nRendering sticks video for flight ${flight.index + 1} -> ${outputPath}`
+      `\nRendering sticks video for flight ${flight.index + 1}` +
+        `${options.theme ? ` (theme: ${options.theme})` : ""}` +
+        ` -> ${outputPath}`
     );
 
     const result = await renderStickVideo(flight, outputPath, {
       fps: options.fps ?? undefined,
+      theme: options.theme ?? undefined,
       onProgress: (message) => {
         process.stdout.write(`\r  ${message}    `);
       }

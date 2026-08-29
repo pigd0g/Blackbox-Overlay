@@ -14,6 +14,7 @@ import {
   pixelDot
 } from "../src/render/gimbalFrame.js";
 import { pixelText, measureText, getGlyph } from "../src/render/bitmapFont.js";
+import { THEMES } from "../src/render/themes.js";
 
 function colorAt(frame, x, y) {
   const offset = (y * WIDTH + x) * 3;
@@ -160,6 +161,29 @@ test("throttle toggle renders off and on distinctly", () => {
 
   assert.deepEqual(colorAt(off, trackX, sampleY), [0x9e, 0x9e, 0x9e]);
   assert.deepEqual(colorAt(on, trackX, sampleY), [0x2e, 0x7d, 0x32]);
+});
+
+test("themes repaint the frame: gunmetal spot-check", () => {
+  const frame = paintStickFrame(
+    { left: { x: 0, y: 0 }, right: { x: 1, y: 1 } },
+    FULL_STATE,
+    THEMES.gunmetal
+  );
+
+  // Background and dot must follow the gunmetal palette.
+  assert.deepEqual(colorAt(frame, 2, 2), [0xb8, 0xc7, 0xc9]);
+  assert.deepEqual(colorAt(frame, WIDTH - 2, HEIGHT - 2), [0xb8, 0xc7, 0xc9]);
+
+  // The right dot sits at full deflection in FULL_STATE.
+  const inset = GIMBAL_LAYOUT.size / 2 - 10 - 4;
+  const dotX = Math.round(
+    GIMBAL_LAYOUT.right.x0 + GIMBAL_LAYOUT.size / 2 + inset
+  );
+  const dotY = Math.round(
+    GIMBAL_LAYOUT.right.y0 + GIMBAL_LAYOUT.size / 2 - inset
+  );
+
+  assert.deepEqual(colorAt(frame, dotX, dotY), [0x00, 0xd9, 0xff]);
 });
 
 test("pixelRect clips out-of-bounds writes safely", () => {

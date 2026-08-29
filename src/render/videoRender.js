@@ -18,6 +18,7 @@ import { WIDTH, HEIGHT, paintStickFrame } from "./gimbalFrame.js";
 import { VideoWriter, checkFfmpegAvailable } from "./videoWriter.js";
 import { detectScales, mapStickPositions, readToggleState, timeToRowIndex } from "./stickMapping.js";
 import { readTelemetry } from "./telemetry.js";
+import { resolveTheme } from "./themes.js";
 
 export const DEFAULT_FPS = 30;
 
@@ -43,11 +44,13 @@ export function defaultVideoPath(logFilePath) {
  * @param {string}  outputPath      destination .mp4
  * @param {object}  [options]
  * @param {number}  [options.fps]   output frame rate (default 30)
+ * @param {string}  [options.theme] color theme name (themes.js)
  * @param {(msg: string) => void} [options.onProgress]
  * @returns {Promise<{frames: number, fps: number, durationSeconds: number}>}
  */
 export async function renderStickVideo(flight, outputPath, options = {}) {
   const fps = options.fps ?? DEFAULT_FPS;
+  const theme = resolveTheme(options.theme);
 
   if (!Number.isFinite(fps) || fps <= 0) {
     throw new Error(`--fps must be a positive number, got ${fps}`);
@@ -127,7 +130,7 @@ export async function renderStickVideo(flight, outputPath, options = {}) {
         rpm: telemetry.rpm
       };
 
-      await writer.writeFrame(paintStickFrame(positions, state));
+      await writer.writeFrame(paintStickFrame(positions, state, theme));
 
       if (options.onProgress && frameIndex % 500 === 0 && frameIndex > 0) {
         options.onProgress(

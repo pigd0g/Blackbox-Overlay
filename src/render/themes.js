@@ -127,6 +127,23 @@ export const THEMES = {
 export const THEME_KEYS = Object.keys(THEMES.default);
 
 /**
+ * Hex-string form of every theme, for the GUI's swatches
+ * and accent wiring. Same structure as THEMES but values
+ * keep their "#rrggbb" source form.
+ */
+export const THEME_HEX = Object.fromEntries(
+  Object.entries(THEMES).map(([name, colors]) => [
+    name,
+    Object.fromEntries(
+      Object.entries(colors).map(([key, [r, g, b]]) => [
+        key,
+        `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`
+      ])
+    )
+  ])
+);
+
+/**
  * Resolve a theme by name (case-insensitive). Unknown
  * names throw with the valid options listed.
  */

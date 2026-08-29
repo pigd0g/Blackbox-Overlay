@@ -27,6 +27,7 @@ import {
   checkFfmpegAvailable
 } from "./src/render/videoRender.js";
 import { resolveTheme, THEME_NAMES } from "./src/render/themes.js";
+import { summarizeFlight } from "./src/summarize.js";
 
 function printUsage() {
   console.log(`gimbalvid — Rotorflight blackbox (.bbl) log reader
@@ -140,33 +141,6 @@ function describeStats(stats) {
   }
 
   return parts.join(", ");
-}
-
-function summarizeFlight(flight) {
-  const summary = {
-    flight: flight.index + 1,
-    craftName: flight.sysConfig.craftName ?? null,
-    firmware: [flight.sysConfig.firmwareType, flight.sysConfig.firmwareRevision]
-      .filter(Boolean)
-      .join(" ") || null,
-    firmwareDate: flight.sysConfig.firmwareDate ?? null,
-    board: flight.sysConfig.boardInformation ?? null,
-    logStart: flight.sysConfig.logStartDatetime ?? null,
-    dataVersion: flight.sysConfig.dataVersion,
-    durationSeconds: Number(flight.durationSeconds.toFixed(3)),
-    mainFrameCount: flight.mainFrames.length,
-    slowFrameCount: flight.slowFrames.length,
-    gpsFrameCount: flight.gpsFrames.length,
-    eventCount: flight.events.length,
-    corruptFrames: flight.stats.corruptFrames,
-    mainFieldCount: flight.mainFieldNames.length
-  };
-
-  if (flight.mainFieldNames.length > 0) {
-    summary.mainFields = flight.mainFieldNames;
-  }
-
-  return summary;
 }
 
 function printFlightSummary(summary, options) {

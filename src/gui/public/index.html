@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>GimbalVid — stick video console</title>
+<link rel="stylesheet" href="/app.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23202426'/%3E%3Ccircle cx='11' cy='11' r='4' fill='%23EE4266'/%3E%3Ccircle cx='21' cy='21' r='4' fill='%23EE4266'/%3E%3C/svg%3E">
+</head>
+<body>
+<a class="skip-link" href="#monitor-heading">Skip to monitor</a>
+
+<div class="chassis">
+  <!-- ============ Top chassis plate ============ -->
+  <header class="plate plate-top" role="banner">
+    <div class="brandlock">
+      <span class="brand-dots" aria-hidden="true"><i></i><i></i></span>
+      <h1 class="brand">GIMBAL<span class="brand-thin">VID</span></h1>
+    </div>
+    <div class="head-status" aria-label="Session status">
+      <span class="pill" id="log-pill" hidden></span>
+      <span class="pill pill-state" id="ffmpeg-pill" data-state="unknown">FFMPEG …</span>
+    </div>
+  </header>
+
+  <!-- ============ Main faceplate ============ -->
+  <main class="face" id="main">
+    <!-- Left rail: source -->
+    <section class="rail" aria-label="Source">
+      <h2 class="rail-title">SOURCE</h2>
+
+      <div class="src-panel" id="src-panel">
+        <button type="button" class="btn btn-block" id="browse-btn">Browse for log…</button>
+        <p class="src-hint" id="src-hint">Drop a <code>.bbl</code> file here — or browse.</p>
+      </div>
+
+      <section class="flights" aria-label="Flights in this log" hidden id="flights-section">
+        <h3 class="group-title">FLIGHTS</h3>
+        <div class="flight-list" id="flight-list" role="listbox" aria-label="Choose a flight"></div>
+        <dl class="flight-facts" id="flight-facts"></dl>
+        <details class="fields-box">
+          <summary>Main fields <span id="field-count" class="count-chip"></span></summary>
+          <ul class="field-list" id="field-list"></ul>
+        </details>
+      </section>
+    </section>
+
+    <!-- Center: monitor -->
+    <section class="stage" aria-label="Preview and render">
+      <h2 class="rail-title" id="monitor-heading">MONITOR</h2>
+
+      <div class="bezel" id="bezel">
+        <div class="screen-frame">
+          <canvas id="screen" width="500" height="300" aria-label="Stick position preview">
+            Your browser does not support canvas previews.
+          </canvas>
+          <div class="screen-idle" id="screen-idle">
+            <p class="idle-mark">NO SIGNAL</p>
+            <p class="idle-sub">Load a flight to preview its sticks here.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="transport" id="transport">
+        <button type="button" class="btn btn-icon" id="play-btn" aria-label="Play preview" aria-pressed="false" disabled>▶</button>
+        <div class="scrub-wrap">
+          <canvas id="trace" height="56" aria-hidden="true"></canvas>
+          <input type="range" class="scrub" id="scrubber" min="0" max="1000" value="0"
+                 step="0.001" aria-label="Scrub through the flight" disabled>
+          <div class="scrub-head" id="scrub-head" hidden></div>
+        </div>
+        <div class="t-read" aria-live="off">
+          <span class="t-label">T</span>
+          <output class="t-value" id="t-value">00:00.0</output>
+          <span class="t-label">FRAME</span>
+          <output class="t-value t-value-num" id="frame-value">0</output>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right: themes -->
+    <section class="themes-rail" aria-label="Theme">
+      <h2 class="rail-title">LOOK</h2>
+      <div class="theme-stack" id="theme-stack" role="radiogroup" aria-label="Video theme"></div>
+      <div class="out-row">
+        <label class="lbl" for="fps-input">FPS</label>
+        <input class="fld fld-num" id="fps-input" type="number" min="1" max="120" step="0.01" value="30" inputmode="decimal">
+      </div>
+      <div class="out-row out-row-clip">
+        <label class="lbl" for="output-input">OUT</label>
+        <input class="fld" id="output-input" type="text" spellcheck="false" aria-describedby="out-hint">
+      </div>
+      <p class="out-hint" id="out-hint">Renders always land in <code>out/</code> — only the file name is used.</p>
+    </section>
+  </main>
+
+  <!-- ============ Bottom chassis plate ============ -->
+  <footer class="plate plate-bottom" role="contentinfo">
+    <div class="foot-facts" id="foot-facts">
+      <span class="foot-item">NO LOG LOADED</span>
+    </div>
+    <div class="render-lockup">
+      <div class="render-msg" id="render-msg" role="status" aria-live="polite"></div>
+      <div class="render-meter" id="render-meter" hidden>
+        <div class="render-meter-fill" id="render-meter-fill"></div>
+      </div>
+      <button type="button" class="btn btn-render" id="render-btn" disabled>RENDER</button>
+    </div>
+  </footer>
+</div>
+
+<!-- ============ Browse dialog ============ -->
+<dialog id="browse-dialog" class="browse" aria-labelledby="browse-title">
+  <header class="browse-head">
+    <h2 id="browse-title">Choose a blackbox log</h2>
+    <button type="button" class="btn btn-icon" id="browse-close" aria-label="Close file browser">✕</button>
+  </header>
+  <div class="browse-bar">
+    <button type="button" class="btn btn-icon" id="browse-up" aria-label="Parent directory" title="Parent directory">↑</button>
+    <span class="browse-path" id="browse-path" role="status"></span>
+  </div>
+  <nav class="browse-drives" id="browse-drives" aria-label="Drives"></nav>
+  <div class="browse-columns">
+    <div class="browse-col">
+      <h3 class="group-title">FOLDERS</h3>
+      <ul class="browse-list" id="browse-dirs"></ul>
+    </div>
+    <div class="browse-col">
+      <h3 class="group-title">LOGS (.BBL)</h3>
+      <ul class="browse-list" id="browse-files"></ul>
+    </div>
+  </div>
+</dialog>
+
+<!-- ============ Video dialog ============ -->
+<dialog id="video-dialog" class="video-dlg" aria-label="Rendered video">
+  <header class="browse-head">
+    <h2>Your stick video</h2>
+    <button type="button" class="btn btn-icon" id="video-close" aria-label="Close video player">✕</button>
+  </header>
+  <video id="video-player" controls playsinline></video>
+  <p class="video-path" id="video-path"></p>
+</dialog>
+
+<template id="flight-row-tpl">
+  <button type="button" class="flight-row" role="option" aria-selected="false">
+    <span class="flight-num"></span>
+    <span class="flight-name">Flight</span>
+    <span class="flight-dur"></span>
+  </button>
+</template>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>

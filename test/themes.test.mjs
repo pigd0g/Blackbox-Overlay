@@ -9,6 +9,7 @@ import {
   THEMES,
   THEME_NAMES,
   THEME_KEYS,
+  THEME_HEX,
   resolveTheme
 } from "../src/render/themes.js";
 
@@ -119,4 +120,19 @@ test("resolveTheme rejects unknown names with the valid list", () => {
     () => resolveTheme("neon-pink"),
     /Unknown theme "neon-pink".*gunmetal, charcoal, slate, lime/
   );
+});
+
+test("THEME_HEX mirrors THEMES as lowercase #rrggbb strings", () => {
+  for (const name of THEME_NAMES) {
+    assert.deepEqual(Object.keys(THEME_HEX[name]).sort(), [...THEME_KEYS].sort());
+
+    for (const key of THEME_KEYS) {
+      const [r, g, b] = THEMES[name][key];
+      assert.equal(
+        THEME_HEX[name][key],
+        `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`,
+        `${name}.${key} hex should round-trip the rgb triplet`
+      );
+    }
+  }
 });

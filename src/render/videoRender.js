@@ -16,8 +16,7 @@ import { dirname } from "node:path";
 
 import { WIDTH, HEIGHT, paintStickFrame } from "./gimbalFrame.js";
 import { VideoWriter, checkFfmpegAvailable } from "./videoWriter.js";
-import { detectScales, mapStickPositions, readToggleState, timeToRowIndex } from "./stickMapping.js";
-import { readTelemetry } from "./telemetry.js";
+import { createFlightSampler } from "./frameSampler.js";
 import { resolveTheme } from "./themes.js";
 
 export const DEFAULT_FPS = 30;
@@ -56,33 +55,15 @@ export async function renderStickVideo(flight, outputPath, options = {}) {
     throw new Error(`--fps must be a positive number, got ${fps}`);
   }
 
-  const binding = detectScales(flight);
+  const sampler = createFlightSampler(flight);
 
-  if (!binding) {
+  if (!sampler) {
     throw new Error(
       "This flight has no rcCommand[0..3] telemetry — cannot render gimbal sticks."
     );
   }
 
-  const timeIndex = binding.columnIndexes.time;
-  const timeColumnUs = flight.mainFrames.map((frame) => frame[timeIndex]);
-
-  const firstTimeUs =
-    flight.mainFrames.length > 0 ? timeColumnUs[0] : 0;
-
-  // Normalize the timeline to 0 so frame i is exactly flight
-  // time i / fps, regardless of when the log starts counting.
-  const relativeTimeUs = timeColumnUs.map((t) => t - firstTimeUs);
-
-  // Frame interval from the log's own sample rate (fallback:
-  // one 20 ms loop), so the final hold period is rendered too.
-  const lastTimeUs = relativeTimeUs[relativeTimeUs.length - 1] ?? 0;
-  const typicalIntervalUs =
-    relativeTimeUs.length > 1
-      ? relativeTimeUs[relativeTimeUs.length - 1] - relativeTimeUs[relativeTimeUs.length - 2]
-      : 20_000;
-
-  const durationSeconds = (lastTimeUs + typicalIntervalUs) / 1_000_000;
+  const durationSeconds = sampler.durationSeconds;
 
   if (durationSeconds <= 0) {
     throw new Error("Flight duration is zero — nothing to render.");
@@ -97,40 +78,18 @@ export async function renderStickVideo(flight, outputPath, options = {}) {
 
   const writer = new VideoWriter(outputPath, fps, WIDTH, HEIGHT);
 
-  // Slow frames (flightModeFlags etc.) arrive keyed by the
-  // main-frame index they follow; a cursor carries the most
-  // recent slow values forward as the render walks frames.
-  // afterMainFrame = -1 (values logged before frame 0) also
-  // applies: row 0 already reflects it.
-  const slowFrames = flight.slowFrames ?? [];
-  let slowCursor = 0;
-  let slowValues = slowFrames.length > 0 ? slowFrames[0].values : null;
-
   try {
     for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
       const tSeconds = frameIndex / fps;
-      const row = timeToRowIndex(relativeTimeUs, tSeconds);
-
-      while (
-        slowCursor < slowFrames.length &&
-        slowFrames[slowCursor].afterMainFrame <= row
-      ) {
-        slowValues = slowFrames[slowCursor].values;
-        slowCursor += 1;
-      }
-
-      const mainFrame = flight.mainFrames[row];
-      const positions = mapStickPositions(mainFrame, binding);
-      const toggles = readToggleState(mainFrame, slowValues, binding);
-      const telemetry = readTelemetry(mainFrame, binding);
+      const sampled = sampler.frameAt(tSeconds);
       const state = {
-        throttle: toggles.throttle,
-        perCell: telemetry.perCell,
-        cellCount: telemetry.cellCount,
-        rpm: telemetry.rpm
+        throttle: sampled.toggles.throttle,
+        perCell: sampled.telemetry.perCell,
+        cellCount: sampled.telemetry.cellCount,
+        rpm: sampled.telemetry.rpm
       };
 
-      await writer.writeFrame(paintStickFrame(positions, state, theme));
+      await writer.writeFrame(paintStickFrame(sampled.positions, state, theme));
 
       if (options.onProgress && frameIndex % 500 === 0 && frameIndex > 0) {
         options.onProgress(

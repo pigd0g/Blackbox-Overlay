@@ -1,14 +1,15 @@
 # GimbalVid
 
-A terminal-based **Rotorflight blackbox (`.bbl`) log reader**. GimbalVid decodes binary blackbox logs, summarizes each recorded flight, and can render the flight's gimbal stick positions to an `.mp4` video.
+A **Rotorflight blackbox (`.bbl`) log tool** with a terminal reader and a local GUI console. GimbalVid decodes binary blackbox logs, summarizes each recorded flight, and can render the flight's gimbal stick positions to an `.mp4` video.
 
 ## Features
 
 - **Decode `.bbl` logs** — reads Betaflight-style binary blackbox files written by Rotorflight, including I/P frame decoding, slow/GPS/event frames, and corrupt-frame skipping.
 - **Flight summaries** — craft name, firmware, board, log start time, data version, duration, frame counts, and main-frame field names.
 - **JSON output** — machine-readable summary for scripting and automation.
-- **Stick-position video** — renders a green-screen-style 500×300 MP4 showing both gimbals (mode-2): left stick = yaw / collective, right stick = roll / pitch, plus ARMED and THROTTLE toggle indicators.
+- **Stick-position video** — renders a green-screen-style 500×300 MP4 showing both gimbals (mode-2): left stick = yaw / collective, right stick = roll / pitch, plus armed and throttle toggle indicators.
 - **No image libraries** — every video frame is painted pixel-by-pixel into `Uint8Array` RGB24 buffers and piped straight into `ffmpeg` (H.264, CRF 18, `+faststart`).
+- **GUI console** — a local web app for browsing logs, previewing real rendered frames, picking themes, and launching renders with live progress.
 
 ## Requirements
 
@@ -28,7 +29,21 @@ npm install -g .
 gimbalvid <file.bbl> [options]
 ```
 
-## Usage
+## GUI console
+
+```sh
+npm run gui            # or: node src/gui/serve.js [--port N] [--no-open]
+```
+
+This starts a local server (bound to `127.0.0.1` only) and opens the console in your browser:
+
+- **Browse or drop a log** — pick a `.bbl` from any folder via the built-in file browser, or drag one onto the source panel.
+- **Flight list** — per-flight craft, firmware, duration, frame counts, and the main-field name list.
+- **Live monitor** — the preview canvas paints real frames from the same pipeline that renders the video; scrub through the flight over its collective trace, press Space to play, arrow keys to step frames.
+- **Theme swatches** — each theme's swatch is a live mini-frame from your own flight; the console's accent color follows the selected theme's stick-dot color.
+- **Render** — choose fps and output name (defaults to `out/<logname>-flight<N>-sticks.mp4`), watch progress, and play the finished MP4 inline.
+
+## CLI usage
 
 ```
 gimbalvid <file.bbl> [options]
@@ -104,9 +119,13 @@ Frame timing comes from the log's own `time` column, so any `--fps` plays back a
 
 ```
 index.js                    CLI entry point
+src/gui/serve.js            local GUI server (127.0.0.1)
+src/gui/api.js              GUI backend (decode cache, preview, jobs)
+src/gui/public/             console frontend (vanilla HTML/CSS/JS)
 src/bbl/                    .bbl decoding (byte stream, header, frames)
 src/render/gimbalFrame.js   pixel painter for stick frames
 src/render/stickMapping.js  rcCommand → gimbal position mapping
+src/render/frameSampler.js  shared time-sampling of flights
 src/render/videoRender.js   render orchestration
 src/render/videoWriter.js   ffmpeg raw-RGB pipe writer
 test/                       node --test suites + sample .bbl fixture

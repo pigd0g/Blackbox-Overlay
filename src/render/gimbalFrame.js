@@ -74,6 +74,60 @@ export function pixelRect(frame, x0, y0, width, height, color) {
   }
 }
 
+// Tailwind "rounded-md" corner radius (0.375rem = 6 px).
+export const CORNER_RADIUS_MD = 6;
+
+/**
+ * Rectangle with rounded corners: pixels inside the full
+ * rect except in the four corner squares, which are kept
+ * only inside a quarter-circle of the given radius.
+ */
+export function pixelRectRounded(frame, x0, y0, width, height, radius, color) {
+  const r = Math.max(
+    0,
+    Math.min(radius, Math.floor(width / 2), Math.floor(height / 2))
+  );
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      let inside = true;
+
+      // Corner zones: keep only pixels within the quarter circle.
+      if (x < r && y < r) {
+        inside = inCorner(x, y, r);
+      } else if (x >= width - r && y < r) {
+        inside = inCorner(width - 1 - x, y, r);
+      } else if (x < r && y >= height - r) {
+        inside = inCorner(x, height - 1 - y, r);
+      } else if (x >= width - r && y >= height - r) {
+        inside = inCorner(width - 1 - x, height - 1 - y, r);
+      }
+
+      if (inside) {
+        plotPixel(frame, x0 + x, y0 + y, color);
+      }
+    }
+  }
+}
+
+function inCorner(dx, dy, r) {
+  const rx = dx - (r - 0.5);
+  const ry = dy - (r - 0.5);
+
+  return rx * rx + ry * ry <= r * r;
+}
+
+function plotPixel(frame, x, y, color) {
+  if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) {
+    return;
+  }
+
+  const offset = (y * WIDTH + x) * 3;
+  frame[offset] = color[0];
+  frame[offset + 1] = color[1];
+  frame[offset + 2] = color[2];
+}
+
 export function pixelLineH(frame, x0, x1, y, color) {
   pixelRect(frame, x0, y, x1 - x0 + 1, 1, color);
 }
@@ -113,9 +167,9 @@ export function paintGimbal(frame, layout, position) {
   const half = size / 2;
   const dotRadius = 10; // twice the original 5
 
-  pixelRect(frame, x0, y0, size, size, COLOR_BOX);
-  pixelLineH(frame, x0, x0 + size - 1, cy, COLOR_CROSSHAIR);
-  pixelLineV(frame, cx, y0, y0 + size - 1, COLOR_CROSSHAIR);
+  pixelRectRounded(frame, x0, y0, size, size, CORNER_RADIUS_MD, COLOR_BOX);
+  pixelLineH(frame, x0 + CORNER_RADIUS_MD, x0 + size - 1 - CORNER_RADIUS_MD, cy, COLOR_CROSSHAIR);
+  pixelLineV(frame, cx, y0 + CORNER_RADIUS_MD, y0 + size - 1 - CORNER_RADIUS_MD, COLOR_CROSSHAIR);
 
   // Inset keeps the full-size dot inside the box even at
   // full deflection (radius + 4 px margin).

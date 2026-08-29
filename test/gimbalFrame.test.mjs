@@ -63,9 +63,42 @@ test("crosshair axes are #92898A", () => {
     const cx = layout.x0 + GIMBAL_LAYOUT.size / 2;
     const cy = layout.y0 + GIMBAL_LAYOUT.size / 2;
 
-    // Center is covered by the stick dot at (0,0); sample the arms.
-    assert.deepEqual(colorAt(frame, layout.x0 + 5, cy), [0x92, 0x89, 0x8a]);
-    assert.deepEqual(colorAt(frame, cx, layout.y0 + 5), [0x92, 0x89, 0x8a]);
+    // Center is covered by the stick dot at (0,0); sample the
+    // arms (inset past the rounded corners).
+    assert.deepEqual(colorAt(frame, layout.x0 + 12, cy), [0x92, 0x89, 0x8a]);
+    assert.deepEqual(colorAt(frame, cx, layout.y0 + 12), [0x92, 0x89, 0x8a]);
+  }
+});
+
+test("gimbal boxes have rounded-md corners (6 px)", () => {
+  const frame = paintStickFrame(CENTER_POSITION, ALL_OFF);
+
+  for (const layout of [GIMBAL_LAYOUT.left, GIMBAL_LAYOUT.right]) {
+    const { x0, y0, size } = layout;
+
+    // The four extreme corner pixels must be background —
+    // a sharp square would paint them grey.
+    for (const [cx2, cy2] of [
+      [x0, y0],
+      [x0 + size - 1, y0],
+      [x0, y0 + size - 1],
+      [x0 + size - 1, y0 + size - 1]
+    ]) {
+      assert.deepEqual(
+        colorAt(frame, cx2, cy2),
+        [0xc6, 0xd8, 0xd3],
+        `corner ${cx2},${cy2} should be rounded away`
+      );
+    }
+
+    // Just inside each corner arc the box paint must appear.
+    assert.deepEqual(colorAt(frame, x0 + 6, y0 + 1), [0x40, 0x40, 0x40]);
+
+    // The box centre stays untouched.
+    assert.deepEqual(
+      colorAt(frame, x0 + size / 2 - 40, y0 + size / 2 - 40),
+      [0x40, 0x40, 0x40]
+    );
   }
 });
 

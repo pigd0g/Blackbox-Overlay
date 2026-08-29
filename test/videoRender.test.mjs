@@ -1,5 +1,5 @@
 // ======================================================
-// GIMBALVID — VIDEO RENDER INTEGRATION TEST
+// RotorFlight-Blackbox-Video-Overlay — VIDEO RENDER INTEGRATION TEST
 // ======================================================
 //
 // Renders a tiny synthetic video and validates the mp4
@@ -56,7 +56,7 @@ function syntheticFlight(seconds, fps) {
 }
 
 test("renderStickVideo produces a valid mp4", { skip: !canRender }, async () => {
-  const directory = mkdtempSync(join(tmpdir(), "gimbalvid-test-"));
+  const directory = mkdtempSync(join(tmpdir(), "rfbvo-test-"));
   const outputPath = join(directory, "sticks.mp4");
 
   try {
@@ -92,7 +92,7 @@ test("renderStickVideo produces a valid mp4", { skip: !canRender }, async () => 
 });
 
 test("renderStickVideo rejects flights without rcCommand telemetry", async () => {
-  const directory = mkdtempSync(join(tmpdir(), "gimbalvid-test-"));
+  const directory = mkdtempSync(join(tmpdir(), "rfbvo-test-"));
   const outputPath = join(directory, "sticks.mp4");
 
   try {

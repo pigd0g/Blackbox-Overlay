@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // ======================================================
-// GIMBALVID — TERMINAL BLACKBOX (.bbl) READER
+// RotorFlight-Blackbox-Video-Overlay — TERMINAL BLACKBOX (.bbl) READER
 // ======================================================
 //
 // Usage:
-//   gimbalvid <file.bbl> [--fields] [--json] [--flight N]
+//   rotorflight-blackbox-video-overlay <file.bbl> [--fields] [--json] [--flight N]
 //                         [--video [out.mp4]] [--fps N]
 //
 //   --fields    list every main-frame field name per flight
@@ -30,10 +30,10 @@ import { resolveTheme, THEME_NAMES } from "./src/render/themes.js";
 import { summarizeFlight } from "./src/summarize.js";
 
 function printUsage() {
-  console.log(`gimbalvid — Rotorflight blackbox (.bbl) log reader
+  console.log(`RotorFlight-Blackbox-Video-Overlay — Rotorflight blackbox (.bbl) log reader
 
 Usage:
-  gimbalvid <file.bbl> [options]
+  rotorflight-blackbox-video-overlay <file.bbl> [options]
 
 Options:
   --fields          list main-frame field names for each flight

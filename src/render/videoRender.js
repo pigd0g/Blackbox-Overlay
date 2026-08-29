@@ -1,5 +1,5 @@
 // ======================================================
-// GIMBALVID — VIDEO RENDER ORCHESTRATION
+// RotorFlight-Blackbox-Video-Overlay — VIDEO RENDER ORCHESTRATION
 // ======================================================
 //
 // Decodes a flight, samples its main frames in real time

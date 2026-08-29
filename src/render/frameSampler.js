@@ -1,5 +1,5 @@
 // ======================================================
-// GIMBALVID — FLIGHT FRAME SAMPLER
+// RotorFlight-Blackbox-Video-Overlay — FLIGHT FRAME SAMPLER
 // ======================================================
 //
 // Shared time-sampling of a decoded flight for the video

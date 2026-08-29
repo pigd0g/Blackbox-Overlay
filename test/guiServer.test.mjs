@@ -1,5 +1,5 @@
 // ======================================================
-// GIMBALVID — GUI SERVER SMOKE TESTS
+// RotorFlight-Blackbox-Video-Overlay — GUI SERVER SMOKE TESTS
 // ======================================================
 //
 // Boots the real GUI server on an ephemeral port and walks
@@ -274,7 +274,7 @@ test("render job runs end-to-end with SSE progress and downloadable media", asyn
     return; // CI/test boxes without ffmpeg still validate the API surface.
   }
 
-  const outDir = mkdtempSync(join(tmpdir(), "gimbalvid-gui-"));
+  const outDir = mkdtempSync(join(tmpdir(), "rfbvo-gui-"));
   const output = join(outDir, "gui-test.mp4");
 
   try {

@@ -1,5 +1,5 @@
 // ======================================================
-// GIMBALVID — GUI API HANDLERS
+// RotorFlight-Blackbox-Video-Overlay — GUI API HANDLERS
 // ======================================================
 //
 // The full logic behind the local GUI server: log decoding

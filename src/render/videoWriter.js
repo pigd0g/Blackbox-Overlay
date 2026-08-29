@@ -1,5 +1,5 @@
 // ======================================================
-// GIMBALVID — VIDEO WRITER
+// RotorFlight-Blackbox-Video-Overlay — VIDEO WRITER
 // ======================================================
 //
 // Streams raw RGB24 frames into an ffmpeg process via

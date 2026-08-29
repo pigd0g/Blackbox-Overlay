@@ -1,5 +1,5 @@
 // ======================================================
-// GIMBALVID — STICK MAPPING UNIT TESTS
+// RotorFlight-Blackbox-Video-Overlay — STICK MAPPING UNIT TESTS
 // ======================================================
 
 import { test } from "node:test";

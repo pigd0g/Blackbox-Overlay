@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // ======================================================
-// GIMBALVID — LOCAL GUI SERVER
+// RotorFlight-Blackbox-Video-Overlay — LOCAL GUI SERVER
 // ======================================================
 //
-// Serves the GimbalVid console (src/gui/public) and its
+// Serves the RotorFlight-Blackbox-Video-Overlay console (src/gui/public) and its
 // JSON/preview/SSE API from src/gui/api.js.
 //
 //   node src/gui/serve.js [--port N] [--no-open]
@@ -284,7 +284,7 @@ async function handleApi(req, res, url) {
     }
 
     const stamp = Date.now().toString(36);
-    const dir = join(tempDir(), "gimbalvid-uploads");
+    const dir = join(tempDir(), "rfbvo-uploads");
     mkdirSync(dir, { recursive: true });
 
     const target = join(dir, `drop-${stamp}.bbl`);
@@ -390,7 +390,7 @@ function parseServeArgs(argv) {
 }
 
 function printServeUsage() {
-  console.log(`gimbalvid GUI — local console for decoding and rendering .bbl logs
+  console.log(`RotorFlight-Blackbox-Video-Overlay GUI — local console for decoding and rendering .bbl logs
 
 Usage:
   node src/gui/serve.js [options]
@@ -431,7 +431,7 @@ async function main() {
 
   const address = `http://127.0.0.1:${server.address().port}`;
 
-  console.log(`gimbalvid console running at ${address}`);
+  console.log(`RotorFlight-Blackbox-Video-Overlay console running at ${address}`);
   console.log("Press Ctrl+C to stop.");
 
   if (options.open) {
@@ -448,6 +448,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(`gimbalvid GUI failed: ${error.message}`);
+  console.error(`RotorFlight-Blackbox-Video-Overlay GUI failed: ${error.message}`);
   process.exitCode = 1;
 });

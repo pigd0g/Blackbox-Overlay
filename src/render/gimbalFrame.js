@@ -1,5 +1,5 @@
 // ======================================================
-// GIMBALVID — GIMBAL FRAME PAINTER
+// RotorFlight-Blackbox-Video-Overlay — GIMBAL FRAME PAINTER
 // ======================================================
 //
 // Paints one video frame as raw RGB24 bytes:

@@ -1,11 +1,11 @@
 {
-  "name": "gimbalvid",
+  "name": "rotorflight-blackbox-video-overlay",
   "version": "0.1.0",
-  "description": "Terminal-based Rotorflight blackbox (.bbl) log reader",
+  "description": "Rotorflight blackbox (.bbl) log reader with gimbal-stick video rendering and a local GUI console",
   "type": "module",
   "main": "index.js",
   "bin": {
-    "gimbalvid": "index.js"
+    "rotorflight-blackbox-video-overlay": "index.js"
   },
   "scripts": {
     "test": "node --test",
@@ -15,7 +15,8 @@
     "rotorflight",
     "blackbox",
     "bbl",
-    "log-reader"
+    "log-reader",
+    "video-overlay"
   ],
   "license": "GPL-3.0-only"
 }

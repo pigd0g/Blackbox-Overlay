@@ -1,5 +1,5 @@
 /* ======================================================
-   GIMBALVID — CONSOLE CSS
+   RotorFlight-Blackbox-Video-Overlay — CONSOLE CSS
    ======================================================
    Direction: a bench instrument. Dark anodized chassis,
    light gull-gray faceplate, machined hairlines, and one
@@ -90,13 +90,14 @@ html, body {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
-/* Engraved plate caption */
+/* Engraved plate caption — long name, tighter tracking */
 .brand {
   margin: 0;
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 700;
-  letter-spacing: 0.34em;
+  letter-spacing: 0.18em;
   color: #e8ebe8;
+  white-space: nowrap;
 }
 .brand-thin { font-weight: 300; color: #9aa3a0; }
 

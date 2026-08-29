@@ -1,5 +1,5 @@
 // ======================================================
-// GIMBALVID — GIMBAL FRAME PAINTER TESTS
+// RotorFlight-Blackbox-Video-Overlay — GIMBAL FRAME PAINTER TESTS
 // ======================================================
 
 import { test } from "node:test";

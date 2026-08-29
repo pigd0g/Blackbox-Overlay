@@ -1,5 +1,5 @@
 // ======================================================
-// GIMBALVID — TELEMETRY READING (battery, RPM)
+// RotorFlight-Blackbox-Video-Overlay — TELEMETRY READING (battery, RPM)
 // ======================================================
 //
 // Shared telemetry helpers for the on-frame status bar:

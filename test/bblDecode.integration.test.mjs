@@ -1,5 +1,5 @@
 // ======================================================
-// GIMBALVID — REAL-LOG INTEGRATION TEST
+// RotorFlight-Blackbox-Video-Overlay — REAL-LOG INTEGRATION TEST
 // ======================================================
 //
 // Decodes every .bbl fixture in test/fixtures/ and checks

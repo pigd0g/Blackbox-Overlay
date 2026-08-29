@@ -1,5 +1,5 @@
 // ======================================================
-// GIMBALVID — GUI API UNIT TESTS
+// RotorFlight-Blackbox-Video-Overlay — GUI API UNIT TESTS
 // ======================================================
 //
 // Pure helpers behind the GUI: fps normalization and the

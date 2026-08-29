@@ -1,5 +1,5 @@
 // ======================================================
-// GIMBALVID — CONSOLE FRONTEND
+// RotorFlight-Blackbox-Video-Overlay — CONSOLE FRONTEND
 // ======================================================
 //
 // Vanilla JS driving the local console: file browsing, log

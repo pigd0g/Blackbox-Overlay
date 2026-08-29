@@ -1,5 +1,5 @@
 // ======================================================
-// GIMBALVID — FRAME SAMPLER TESTS
+// RotorFlight-Blackbox-Video-Overlay — FRAME SAMPLER TESTS
 // ======================================================
 //
 // Uses the real fixture log when present; skips cleanly
@@ -91,7 +91,7 @@ test("frameAt rejects non-finite times", () => {
 test("sampler reproduces the CLI video render output", async () => {
   if (!hasFixture) return;
 
-  const dir = mkdtempSync(join(tmpdir(), "gimbalvid-sampler-"));
+  const dir = mkdtempSync(join(tmpdir(), "rfbvo-sampler-"));
 
   try {
     const result = await renderStickVideo(

@@ -1,5 +1,5 @@
 // ======================================================
-// GIMBALVID — THEME TESTS
+// RotorFlight-Blackbox-Video-Overlay — THEME TESTS
 // ======================================================
 
 import { test } from "node:test";

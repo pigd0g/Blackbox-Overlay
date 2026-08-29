@@ -1,6 +1,6 @@
-# GimbalVid
+# RotorFlight-Blackbox-Video-Overlay
 
-A **Rotorflight blackbox (`.bbl`) log tool** with a terminal reader and a local GUI console. GimbalVid decodes binary blackbox logs, summarizes each recorded flight, and can render the flight's gimbal stick positions to an `.mp4` video.
+A **Rotorflight blackbox (`.bbl`) log tool** with a terminal reader and a local GUI console. RotorFlight-Blackbox-Video-Overlay decodes binary blackbox logs, summarizes each recorded flight, and can render the flight's gimbal stick positions to an `.mp4` video.
 
 ## Features
 
@@ -24,9 +24,9 @@ Clone the repository, then either run it directly or install globally:
 # Run directly
 node index.js <file.bbl> [options]
 
-# Or link it as the `gimbalvid` command
+# Or link it as the `rotorflight-blackbox-video-overlay` command
 npm install -g .
-gimbalvid <file.bbl> [options]
+rotorflight-blackbox-video-overlay <file.bbl> [options]
 ```
 
 ## GUI console
@@ -46,7 +46,7 @@ This starts a local server (bound to `127.0.0.1` only) and opens the console in 
 ## CLI usage
 
 ```
-gimbalvid <file.bbl> [options]
+rotorflight-blackbox-video-overlay <file.bbl> [options]
 
 Options:
   --fields          list main-frame field names for each flight
@@ -63,44 +63,44 @@ Options:
 Summarize every flight in a log:
 
 ```sh
-gimbalvid Kraken_20260522_025600.bbl
+rotorflight-blackbox-video-overlay Kraken_20260522_025600.bbl
 ```
 
 List every main-frame field name:
 
 ```sh
-gimbalvid flight.bbl --fields
+rotorflight-blackbox-video-overlay flight.bbl --fields
 ```
 
 Get a machine-readable JSON summary:
 
 ```sh
-gimbalvid flight.bbl --json
+rotorflight-blackbox-video-overlay flight.bbl --json
 ```
 
 Inspect only the third flight:
 
 ```sh
-gimbalvid flight.bbl --flight 3
+rotorflight-blackbox-video-overlay flight.bbl --flight 3
 ```
 
 Render a stick-position video next to the log (`flight-sticks.mp4`):
 
 ```sh
-gimbalvid flight.bbl --video
+rotorflight-blackbox-video-overlay flight.bbl --video
 ```
 
 Render a video to a custom path at 60 fps:
 
 ```sh
-gimbalvid flight.bbl --video out/my-sticks.mp4 --fps 60
+rotorflight-blackbox-video-overlay flight.bbl --video out/my-sticks.mp4 --fps 60
 ```
 
 Combine options — JSON summary of flight 2, then render its video:
 
 ```sh
-gimbalvid flight.bbl --flight 2 --json
-gimbalvid flight.bbl --flight 2 --video
+rotorflight-blackbox-video-overlay flight.bbl --flight 2 --json
+rotorflight-blackbox-video-overlay flight.bbl --flight 2 --video
 ```
 
 ## Stick video layout

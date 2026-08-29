@@ -1,5 +1,5 @@
 // ======================================================
-// GIMBALVID — STICK MAPPING
+// RotorFlight-Blackbox-Video-Overlay — STICK MAPPING
 // ======================================================
 //
 // Turns raw rcCommand columns into normalized gimbal

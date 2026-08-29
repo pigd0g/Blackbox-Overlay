@@ -1,5 +1,5 @@
 // ======================================================
-// GIMBALVID — COLOR THEMES
+// RotorFlight-Blackbox-Video-Overlay — COLOR THEMES
 // ======================================================
 //
 // One object per theme with the 11 interface colors, in

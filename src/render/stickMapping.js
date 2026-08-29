@@ -6,7 +6,9 @@
 // positions, the same evidence layer Blackbox Lab uses
 // for its stick display, reworked for terminal rendering.
 //
-// rcCommand[0]=roll, [1]=pitch, [2]=yaw, [3]=collective.
+// Rotorflight logs five rcCommand channels (replayFields.js
+// in Blackbox Lab): [0]=roll, [1]=pitch, [2]=yaw,
+// [3]=collective, [4]=throttle.
 // Gimbal assignment (fixed, mode-2 style):
 //   left  gimbal: x = yaw,         y = collective
 //   right gimbal: x = roll,        y = pitch
@@ -21,10 +23,15 @@ export const REQUIRED_FIELDS = [
   "time"
 ];
 
-// Optional channels used by the on-screen toggles:
-//   rcCommand[4] — arming channel (0 = disarmed, high = armed)
-//   rcCommand[3] — collective doubles as throttle indicator
-export const ARM_CHANNEL = "rcCommand[4]";
+// Throttle channel: Rotorflight logs it as rcCommand[4].
+// Betaflight-style logs (4 channels, [3] = throttle) fall
+// back to the collective slot only when [4] is absent.
+const THROTTLE_CHANNEL = "rcCommand[4]";
+
+// flightModeFlags bit 0 = ARM box (Rotorflight/Betaflight).
+const ARM_FLAG_BIT = 1;
+const FLIGHT_MODE_FLAGS = "flightModeFlags";
+const MOTOR_FIELD = "motor[0]";
 
 // The log states its own deflection range: RF logs use ±500
 // for every rcCommand axis, but nothing is assumed — the
@@ -68,6 +75,8 @@ export function detectScales(flight) {
     return null;
   }
 
+  const throttleIndex = flight.mainFieldNames.indexOf(THROTTLE_CHANNEL);
+
   return {
     columnIndexes: {
       roll: columns[0].index,
@@ -75,7 +84,15 @@ export function detectScales(flight) {
       yaw: columns[2].index,
       collective: columns[3].index,
       time: columns[4].index,
-      arm: flight.mainFieldNames.indexOf(ARM_CHANNEL)
+      // Fallback keeps Betaflight-style logs working: there
+      // rcCommand[3] IS the throttle channel.
+      throttle: throttleIndex >= 0 ? throttleIndex : columns[3].index,
+      motor: flight.mainFieldNames.indexOf(MOTOR_FIELD)
+    },
+    slowColumnIndexes: {
+      flightModeFlags: flight.slowFieldNames
+        ? flight.slowFieldNames.indexOf(FLIGHT_MODE_FLAGS)
+        : -1
     },
     scales: {
       roll: detectScale(columns[0].values),
@@ -87,19 +104,38 @@ export function detectScales(flight) {
 }
 
 /**
- * Toggle states for one main frame:
- *   armed    — arming channel rcCommand[4] is high (non-zero)
- *   throttle — collective stick (rcCommand[3]) above 0
+ * Toggle states for one main frame.
+ *
+ *   throttle — throttle channel (rcCommand[4] in Rotorflight
+ *              logs, rcCommand[3] fallback) above 0
+ *   armed    — flightModeFlags bit 0 (the ARM box) from the
+ *              slow-frame values carried forward to this
+ *              main frame; falls back to motor[0] > 0 when
+ *              the log carries no flightModeFlags
+ *
+ * @param {Int32Array} mainFrame   current main frame values
+ * @param {Int32Array|null} slowValues current slow-frame values
+ * @param {object}     binding     from detectScales()
  */
-export function readToggleState(frame, binding) {
-  const { columnIndexes } = binding;
-  const arm =
-    columnIndexes.arm >= 0 ? Number(frame[columnIndexes.arm]) || 0 : 0;
-  const collective = Number(frame[columnIndexes.collective]) || 0;
+export function readToggleState(mainFrame, slowValues, binding) {
+  const { columnIndexes, slowColumnIndexes } = binding;
+
+  const throttle = Number(mainFrame[columnIndexes.throttle]) || 0;
+
+  let armed = false;
+
+  if (slowColumnIndexes.flightModeFlags >= 0 && slowValues) {
+    armed =
+      ((Number(slowValues[slowColumnIndexes.flightModeFlags]) || 0) &
+        ARM_FLAG_BIT) ===
+      ARM_FLAG_BIT;
+  } else if (columnIndexes.motor >= 0) {
+    armed = (Number(mainFrame[columnIndexes.motor]) || 0) > 0;
+  }
 
   return {
-    armed: arm > 0,
-    throttle: collective > 0
+    armed,
+    throttle: throttle > 0
   };
 }
 

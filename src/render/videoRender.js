@@ -98,13 +98,31 @@ export async function renderStickVideo(flight, outputPath, options = {}) {
 
   const writer = new VideoWriter(outputPath, fps, WIDTH, HEIGHT);
 
+  // Slow frames (flightModeFlags etc.) arrive keyed by the
+  // main-frame index they follow; a cursor carries the most
+  // recent slow values forward as the render walks frames.
+  // afterMainFrame = -1 (values logged before frame 0) also
+  // applies: row 0 already reflects it.
+  const slowFrames = flight.slowFrames ?? [];
+  let slowCursor = 0;
+  let slowValues = slowFrames.length > 0 ? slowFrames[0].values : null;
+
   try {
     for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
       const tSeconds = frameIndex / fps;
       const row = timeToRowIndex(relativeTimeUs, tSeconds);
+
+      while (
+        slowCursor < slowFrames.length &&
+        slowFrames[slowCursor].afterMainFrame <= row
+      ) {
+        slowValues = slowFrames[slowCursor].values;
+        slowCursor += 1;
+      }
+
       const mainFrame = flight.mainFrames[row];
       const positions = mapStickPositions(mainFrame, binding);
-      const state = readToggleState(mainFrame, binding);
+      const state = readToggleState(mainFrame, slowValues, binding);
 
       await writer.writeFrame(paintStickFrame(positions, state));
 

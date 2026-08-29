@@ -74,8 +74,9 @@ test("mapStickPositions keeps full deflection at the standard ±500 range", () =
   assert.deepEqual(positions.left, { x: -1, y: 0 });
 });
 
-test("readToggleState: armed = rcCommand[4], throttle = collective > 0", () => {
-  // [roll, pitch, yaw, collective, time, arm]
+test("readToggleState: throttle = rcCommand[4], armed = flightModeFlags bit 0", () => {
+  // [roll, pitch, yaw, collective, time, throttle(rc4)]
+  // slow: [flightModeFlags, ...]
   const flight = makeFlight(
     [
       "rcCommand[0]",
@@ -83,46 +84,124 @@ test("readToggleState: armed = rcCommand[4], throttle = collective > 0", () => {
       "rcCommand[2]",
       "rcCommand[3]",
       "time",
-      "rcCommand[4]"
+      "rcCommand[4]",
+      "motor[0]"
     ],
     [
-      [0, 0, 0, 0, 0, 0],        // disarmed, no throttle
-      [0, 0, 0, 50, 1000, 1000], // armed, throttle on
-      [0, 0, 0, 0, 2000, 1000],  // armed, throttle idle
-      [0, 0, 0, -20, 3000, 0]    // disarmed, negative collective
+      [0, 0, 0, 10, 0, 0, 0],      // disarmed (flag bit0=1!), throttle 0
+      [0, 0, 0, 50, 1000, 1000, 5], // flag cleared, throttle on
+      [0, 0, 0, 0, 2000, 0, 300],   // armed again, throttle off, motor spinning
+      [0, 0, 0, -20, 3000, 0, 0]    // disarmed, negative collective (irrelevant)
     ]
   );
+  flight.slowFieldNames = ["flightModeFlags", "stateFlags"];
+  flight.slowFrames = [
+    { afterMainFrame: -1, values: [1, 7] },     // ARM box set
+    { afterMainFrame: 0, values: [0, 7] },      // ARM box cleared
+    { afterMainFrame: 2, values: [1, 5] }       // ARM box set again
+  ];
 
   const binding = detectScales(flight);
 
-  assert.deepEqual(readToggleState(flight.mainFrames[0], binding), {
-    armed: false,
-    throttle: false
-  });
-  assert.deepEqual(readToggleState(flight.mainFrames[1], binding), {
-    armed: true,
-    throttle: true
-  });
-  assert.deepEqual(readToggleState(flight.mainFrames[2], binding), {
-    armed: true,
-    throttle: false
-  });
-  // Collective below zero is still "above 0"? No — strictly above.
-  assert.deepEqual(readToggleState(flight.mainFrames[3], binding), {
+  const slowAt = (mainRow) => {
+    let values = flight.slowFrames[0].values;
+    for (const slow of flight.slowFrames) {
+      if (slow.afterMainFrame <= mainRow) values = slow.values;
+    }
+    return values;
+  };
+
+  // Frame 0: the afterMainFrame=0 slow frame applies at row 0
+  // (flag cleared after pre-log values) → not armed, throttle 0.
+  assert.deepEqual(
+    readToggleState(flight.mainFrames[0], slowAt(0), binding),
+    { armed: false, throttle: false }
+  );
+  // Frame 1: flag cleared → throttle channel drives only throttle.
+  assert.deepEqual(
+    readToggleState(flight.mainFrames[1], slowAt(1), binding),
+    { armed: false, throttle: true }
+  );
+  // Frame 2: flag set again, throttle 0, motor spinning.
+  assert.deepEqual(
+    readToggleState(flight.mainFrames[2], slowAt(2), binding),
+    { armed: true, throttle: false }
+  );
+  // Frame 3: latest slow (afterMainFrame=2) still applies.
+  assert.deepEqual(
+    readToggleState(flight.mainFrames[3], slowAt(3), binding),
+    { armed: true, throttle: false }
+  );
+});
+
+test("readToggleState: collective (rcCommand[3]) never drives toggles", () => {
+  // Collective wildly positive; throttle (rc4) and flags off.
+  const flight = makeFlight(
+    [
+      "rcCommand[0]",
+      "rcCommand[1]",
+      "rcCommand[2]",
+      "rcCommand[3]",
+      "time",
+      "rcCommand[4]",
+      "motor[0]"
+    ],
+    [[0, 0, 0, 400, 0, 0, 0]]
+  );
+  flight.slowFieldNames = ["flightModeFlags"];
+  flight.slowFrames = [{ afterMainFrame: -1, values: [0] }];
+
+  const binding = detectScales(flight);
+
+  assert.deepEqual(readToggleState(flight.mainFrames[0], flight.slowFrames[0].values, binding), {
     armed: false,
     throttle: false
   });
 });
 
-test("readToggleState without an arm channel never arms", () => {
+test("readToggleState falls back to motor[0] without flightModeFlags", () => {
+  const flight = makeFlight(
+    [
+      "rcCommand[0]",
+      "rcCommand[1]",
+      "rcCommand[2]",
+      "rcCommand[3]",
+      "time",
+      "rcCommand[4]",
+      "motor[0]"
+    ],
+    [
+      [0, 0, 0, 0, 0, 0, 0],      // motor idle → disarmed
+      [0, 0, 0, 0, 1000, 500, 42] // motor spinning → armed
+    ]
+  );
+  flight.slowFieldNames = ["stateFlags"];
+  flight.slowFrames = [{ afterMainFrame: -1, values: [7] }];
+
+  const binding = detectScales(flight);
+  const noSlow = null;
+
+  assert.deepEqual(readToggleState(flight.mainFrames[0], noSlow, binding), {
+    armed: false,
+    throttle: false
+  });
+  assert.deepEqual(readToggleState(flight.mainFrames[1], noSlow, binding), {
+    armed: true,
+    throttle: true
+  });
+});
+
+test("readToggleState: Betaflight-style 4-channel log throttles on rcCommand[3]", () => {
   const flight = makeFlight(
     ["rcCommand[0]", "rcCommand[1]", "rcCommand[2]", "rcCommand[3]", "time"],
-    [[0, 0, 0, 100, 0]]
+    [[0, 0, 0, 800, 0]]
   );
 
   const binding = detectScales(flight);
 
-  assert.deepEqual(readToggleState(flight.mainFrames[0], binding), {
+  assert.equal(binding.columnIndexes.throttle, binding.columnIndexes.collective);
+  assert.deepEqual(readToggleState(flight.mainFrames[0], null, binding), {
+    // No slow flags, no motor field → armed stays false.
     armed: false,
     throttle: true
   });

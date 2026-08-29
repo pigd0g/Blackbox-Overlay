@@ -1,0 +1,20 @@
+{
+  "name": "gimbalvid",
+  "version": "0.1.0",
+  "description": "Terminal-based Rotorflight blackbox (.bbl) log reader",
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "gimbalvid": "index.js"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "rotorflight",
+    "blackbox",
+    "bbl",
+    "log-reader"
+  ],
+  "license": "GPL-3.0-only"
+}

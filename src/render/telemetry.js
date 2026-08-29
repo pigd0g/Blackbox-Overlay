@@ -9,36 +9,94 @@
 //   headspeed — logged RPM (motor RPM; rotor RPM on
 //               geared heads would need the gearing)
 //
-// Cell count follows the common 1S–14S lipo logic: divide
-// pack volts by the nominal-per-cell operating point
-// (4.10 V, the same constant Blackbox Lab uses) and round;
-// clamped to the 1S..14S range hobby chargers know.
+// Cell counting: a pack's total voltage alone is ambiguous
+// (14.8 V could be 4S healthy or 5S nearly dead), so the
+// detector bounds each candidate's per-cell voltage to the
+// plausible LiPo window and prefers the count whose per-cell
+// voltage sits closest to a mid-discharge reference. The
+// caller latches the resulting count for the whole flight —
+// a pack cannot gain or lose cells mid-air — so heavy-load
+// sag can never flip the overlay between 5S and 6S.
 //
 // ======================================================
 
-export const VOLTS_PER_CELL_NOMINAL = 4.1;
+// Practical LiPo window (per cell).
+export const MIN_CELL_VOLTAGE = 3.0;
+export const MAX_CELL_VOLTAGE = 4.25;
+
+// Mid-discharge reference: a pack spends most of its usable
+// life near here, so the closest candidate is most likely.
+export const REF_CELL_VOLTAGE = 3.7;
+
+// Fresh-off-the-charger reference. RC packs arrive at the
+// field charged, so early-flight readings skew high; a
+// candidate whose per-cell voltage reads as a *full* pack
+// is ordinary, not exotic. Scores near this reference get
+// a gentle bonus via a second reference point.
+export const FULL_CELL_VOLTAGE = 4.2;
+
 export const MAX_CELLS = 14;
 export const VBAT_SCALE = 100;
 
+const ROUND = (value, places) => {
+  const f = 10 ** places;
+  return Math.round(value * f) / f;
+};
+
 /**
- * Cell count from pack volts, 1S..14S. Null when the
- * reading is not plausible for any lipo (0 V, > 14S).
+ * Distance from the nearest of the two anchors — full and
+ * mid-discharge. A candidate hugging either chemistry point
+ * (4.2 = charged, 3.7 = working) beats one floating between
+ * counts with no anchor.
  */
-export function detectCellCount(packVolts) {
-  if (!Number.isFinite(packVolts) || packVolts <= 0) {
-    return null;
-  }
-
-  const cells = Math.round(packVolts / VOLTS_PER_CELL_NOMINAL);
-
-  if (cells < 1 || cells > MAX_CELLS) {
-    return null;
-  }
-
-  return cells;
+function cellScore(perCell) {
+  return Math.min(
+    Math.abs(perCell - REF_CELL_VOLTAGE),
+    Math.abs(perCell - FULL_CELL_VOLTAGE)
+  );
 }
 
-/** Per-cell volts, rounded to 2 decimals. Null if impossible. */
+/**
+ * Pick the most plausible cell count for a pack voltage.
+ *
+ * Candidates 1S..14S keep only those whose per-cell voltage
+ * lands inside the LiPo window; the winner is the count whose
+ * per-cell voltage sits closest to a real chemistry point
+ * (fully-charged 4.2 V or mid-discharge 3.7 V). This reads
+ * the fixture's 24.8 V as 6S @ 4.14 (full 6S) rather than
+ * 7S @ 3.55, while nominal packs still resolve to their
+ * nominal count.
+ */
+export function detectCells(totalVolts) {
+  if (!Number.isFinite(totalVolts) || totalVolts <= 0) {
+    return null;
+  }
+
+  let best = null;
+
+  for (let cells = 1; cells <= MAX_CELLS; cells += 1) {
+    const perCell = totalVolts / cells;
+
+    if (perCell < MIN_CELL_VOLTAGE || perCell > MAX_CELL_VOLTAGE) {
+      continue;
+    }
+
+    const score = cellScore(perCell);
+
+    // Strict less-than keeps the smaller (earlier) count on
+    // exact ties — the conservative display choice.
+    if (!best || score < best.score) {
+      best = { cells, perCell, score };
+    }
+  }
+
+  return best ? best.cells : null;
+}
+
+/**
+ * Per-cell volts for a known count, 2 decimals. Null when
+ * impossible (no pack, non-positive cell count).
+ */
 export function voltsPerCell(packVolts, cells) {
   if (
     !Number.isFinite(packVolts) ||
@@ -48,13 +106,84 @@ export function voltsPerCell(packVolts, cells) {
     return null;
   }
 
-  return Math.round((packVolts / cells) * 100) / 100;
+  return ROUND(packVolts / cells, 2);
+}
+
+/**
+ * Confidence that the detected count is right, in [0, 1],
+ * from how much margin the winning candidate has over the
+ * runner-up; below 3.3 V/cell the pack is in the ambiguous
+ * region where adjacent counts are hard to tell apart, so
+ * confidence is damped. Status flags low/full conditions.
+ */
+export function cellConfidence(totalVolts) {
+  if (!Number.isFinite(totalVolts) || totalVolts <= 0) {
+    return null;
+  }
+
+  const candidates = [];
+
+  for (let cells = 1; cells <= MAX_CELLS; cells += 1) {
+    const perCell = totalVolts / cells;
+
+    if (perCell < MIN_CELL_VOLTAGE || perCell > MAX_CELL_VOLTAGE) {
+      continue;
+    }
+
+    candidates.push({ cells, perCell, score: cellScore(perCell) });
+  }
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  candidates.sort((a, b) => a.score - b.score);
+
+  const best = candidates[0];
+  const second = candidates[1];
+
+  let confidence = 1;
+
+  if (second) {
+    // Under-load sag compresses scores; 0.25 V of separation
+    // between candidates is a solid call.
+    confidence = Math.min(1, Math.max(0, (second.score - best.score) / 0.25));
+  }
+
+  if (best.perCell < 3.3) {
+    confidence *= 0.7;
+  }
+
+  return ROUND(confidence, 2);
+}
+
+/**
+ * Status for one per-cell reading: flags when the pack is
+ * near empty or freshly charged.
+ */
+export function cellStatus(perCell) {
+  if (!Number.isFinite(perCell)) {
+    return null;
+  }
+
+  if (perCell < 3.3) {
+    return "low-voltage";
+  }
+
+  if (perCell >= 4.2) {
+    return "fully-charged";
+  }
+
+  return "ok";
 }
 
 /**
  * Read live telemetry for one main frame.
  * Returns { packVolts, cellCount, perCell, rpm } with null
  * for anything the log does not carry.
+ *
+ * `cellCount` here is per-frame detection, used for
+ * latching (see frameSampler.js); it holds no state.
  */
 export function readTelemetry(frame, binding) {
   const { columnIndexes } = binding;
@@ -78,7 +207,7 @@ export function readTelemetry(frame, binding) {
     }
   }
 
-  const cellCount = packVolts === null ? null : detectCellCount(packVolts);
+  const cellCount = packVolts === null ? null : detectCells(packVolts);
   const perCell = cellCount === null ? null : voltsPerCell(packVolts, cellCount);
 
   return { packVolts, cellCount, perCell, rpm };

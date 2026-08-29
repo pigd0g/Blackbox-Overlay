@@ -234,16 +234,21 @@ async function consumeSse(url, onEvent, timeoutMs = 120_000) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+
+  let timedOut = false;
   const timeout = setTimeout(() => {
+    timedOut = true;
     reader.cancel().catch(() => {});
-    throw new Error("SSE stream timed out");
   }, timeoutMs);
 
   try {
     while (true) {
       const { done, value } = await reader.read();
 
-      if (done) break;
+      if (done || timedOut) {
+        if (timedOut) throw new Error("SSE stream timed out");
+        break;
+      }
 
       buffer += decoder.decode(value, { stream: true });
 
@@ -255,7 +260,13 @@ async function consumeSse(url, onEvent, timeoutMs = 120_000) {
 
         for (const line of chunk.split("\n")) {
           if (line.startsWith("data: ")) {
-            onEvent(JSON.parse(line.slice(6)));
+            // onEvent returns true to mean "stop reading" —
+            // used to abort right after a terminal event,
+            // like a browser closing the stream.
+            if (onEvent(JSON.parse(line.slice(6))) === true) {
+              reader.cancel().catch(() => {});
+              return;
+            }
           }
         }
       }
@@ -298,9 +309,12 @@ test("render job runs end-to-end with SSE progress and downloadable media", asyn
       consumeSse(`${base}/api/jobs/${jobId}/events`, (event) => {
         if (event.type === "done") {
           resolvePromise(event.job);
+          return true; // stop reading, like the browser does
         } else if (event.type === "error") {
           reject(new Error(event.job.error || "render failed"));
+          return true;
         }
+        return false;
       }).catch(reject);
     });
 
@@ -332,4 +346,60 @@ test("media endpoint refuses paths that never rendered", async () => {
   );
 
   assert.equal(response.status, 404);
+});
+
+test("server survives SSE close after the render settles", async () => {
+  if (!hasFixture) return;
+
+  const state = await (await fetch(`${base}/api/state`)).json();
+
+  if (!state.ffmpeg) return;
+
+  const outDir = mkdtempSync(join(tmpdir(), "rfbvo-sse-"));
+  const output = join(outDir, "sse-close.mp4");
+
+  try {
+    const startResponse = await fetch(`${base}/api/render`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: FIXTURE, flight: 1, fps: 30, theme: "slate", output })
+    });
+
+    assert.equal(startResponse.status, 202);
+
+    const { jobId } = await startResponse.json();
+
+    // Wait for the done event, then abort the stream — the
+    // browser's EventSource/fetch always closes right after
+    // it sees a terminal event. Previously this crashed the
+    // server (unsubscribe touched nulled activeJob).
+    await consumeSse(`${base}/api/jobs/${jobId}/events`, (event) => {
+      if (event.type === "error") {
+        throw new Error(event.job.error || "render failed");
+      }
+      return event.type === "done"; // abort on done
+    });
+
+    // Give the server a beat to run the close handler that
+    // used to throw.
+    await new Promise((r) => setTimeout(r, 500));
+
+    // The crash killed the whole process; if the state
+    // endpoint still answers, the fix holds.
+    const probe = await fetch(`${base}/api/state`);
+
+    assert.equal(probe.status, 200);
+
+    // Finished jobs stay queryable even after activeJob is
+    // cleared — late status polls and media fetches work.
+    const status = await fetch(`${base}/api/jobs/${jobId}`);
+
+    assert.equal(status.status, 200);
+
+    const snapshot = await status.json();
+
+    assert.equal(snapshot.state, "done");
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
 });

@@ -6,29 +6,47 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  detectCellCount,
+  detectCells,
   voltsPerCell,
+  cellConfidence,
+  cellStatus,
   readTelemetry
 } from "../src/render/telemetry.js";
+import { createFlightSampler } from "../src/render/frameSampler.js";
 
-test("detectCellCount: common 1S-14S lipo rule at 4.1 V/cell", () => {
-  assert.equal(detectCellCount(4.1), 1);
-  assert.equal(detectCellCount(3.8), 1); // rounds down to 1S
-  assert.equal(detectCellCount(8.2), 2);
-  assert.equal(detectCellCount(12.3), 3);
-  assert.equal(detectCellCount(16.2), 4);
-  assert.equal(detectCellCount(24.6), 6); // the Kraken fixture pack
-  assert.equal(detectCellCount(49.2), 12);
-  assert.equal(detectCellCount(57.4), 14);
-
-  // Outside any plausible lipo: null.
-  assert.equal(detectCellCount(0), null);
-  assert.equal(detectCellCount(-5), null);
-  assert.equal(detectCellCount(62), null); // 15S+ territory
-  assert.equal(detectCellCount(Number.NaN), null);
+test("detectCells: healthy packs across the common ranges", () => {
+  assert.equal(detectCells(4.1), 1);
+  assert.equal(detectCells(7.6), 2);
+  assert.equal(detectCells(11.2), 3);
+  assert.equal(detectCells(14.8), 4);
+  assert.equal(detectCells(15.2), 4); // 4S storage → 3.8 V/cell
+  assert.equal(detectCells(18.5), 5);
+  assert.equal(detectCells(22.2), 6);
+  assert.equal(detectCells(44.4), 12); // 12S nominal
+  assert.equal(detectCells(57.4), 14); // 13S would be 4.41 — out of window
 });
 
-test("voltsPerCell rounds to 2 decimals at 4.10 V/cell reference", () => {
+test("detectCells: rejects anything outside the lipo window", () => {
+  assert.equal(detectCells(0), null);
+  assert.equal(detectCells(-5), null);
+  assert.equal(detectCells(Number.NaN), null);
+  // 2.9 * 14 = 40.6 is the lowest legal pack; below that with
+  // no candidate inside 3.0–4.25 V/cell → null.
+  assert.equal(detectCells(2.9), null);
+  // 14S max = 59.5; above that no candidate fits.
+  assert.equal(detectCells(62), null);
+});
+
+test("detectCells: full packs resolve via the 4.2 V chemistry anchor", () => {
+  // Dual anchors (3.7 nominal + 4.2 full) read a fresh pack
+  // as its true count: 16.8 V → 4S @ 4.20 (exact anchor) not
+  // 5S @ 3.36; 24.6/25.2 V → 6S @ 4.10/4.20 not 7S.
+  assert.equal(detectCells(16.8), 4);
+  assert.equal(detectCells(24.6), 6);
+  assert.equal(detectCells(25.2), 6);
+});
+
+test("voltsPerCell rounds to 2 decimals", () => {
   assert.equal(voltsPerCell(24.6, 6), 4.1);
   assert.equal(voltsPerCell(23.3, 6), 3.88);
   assert.equal(voltsPerCell(24.9, 6), 4.15);
@@ -38,6 +56,31 @@ test("voltsPerCell rounds to 2 decimals at 4.10 V/cell reference", () => {
   assert.equal(voltsPerCell(null, 6), null);
   assert.equal(voltsPerCell(24.6, 0), null);
   assert.equal(voltsPerCell(24.6, Number.NaN), null);
+});
+
+test("cellConfidence: clear-cut packs score high, ambiguous score low", () => {
+  // 22.2 V (6S @ 3.7): 5S would be 4.44 — out of window — so
+  // no runner-up exists; full confidence.
+  assert.equal(cellConfidence(22.2), 1);
+
+  // 24.6 V (6S @ 4.1): 7S @ 3.51 is the runner-up with the
+  // same 0.45 separation — wait, both are 0.45/0.19...
+  // 4.10 - 3.70 = 0.40; 3.70 - 3.51 = 0.19 → low confidence.
+  const midFull = cellConfidence(24.6);
+
+  assert.ok(midFull >= 0 && midFull <= 1);
+  assert.ok(midFull < 1, "4.1 V/cell is symmetric-ish: dubious");
+
+  // Invalid inputs → null.
+  assert.equal(cellConfidence(0), null);
+  assert.equal(cellConfidence(Number.NaN), null);
+});
+
+test("cellStatus flags low and full per-cell readings", () => {
+  assert.equal(cellStatus(3.7), "ok");
+  assert.equal(cellStatus(3.29), "low-voltage");
+  assert.equal(cellStatus(4.2), "fully-charged");
+  assert.equal(cellStatus(Number.NaN), null);
 });
 
 test("readTelemetry: Vbat /100, headspeed as RPM", () => {
@@ -59,6 +102,8 @@ test("readTelemetry: Vbat /100, headspeed as RPM", () => {
     }
   };
 
+  // 23.8 V / 6 = 3.97 from the per-frame detector; the latch
+  // in frameSampler overrides this per flight.
   assert.deepEqual(readTelemetry(mainFrame, binding), {
     packVolts: 23.8,
     cellCount: 6,
@@ -90,4 +135,100 @@ test("readTelemetry: missing Vbat / headspeed columns read null", () => {
     perCell: null,
     rpm: null
   });
+});
+
+// ------------------------------------------------------
+// Cell-count lock (sampler level)
+// ------------------------------------------------------
+
+/**
+ * A tiny synthetic flight: N main frames of Vbat readings
+ * (mV×100), big enough to exercise the latch window.
+ */
+function syntheticFlight(vbatSeries) {
+  const mainFrames = vbatSeries.map((centiVolts, i) => [
+    0, 0, 0, 0, i * 20_000, 0, 0, centiVolts
+  ]);
+
+  return {
+    index: 0,
+    sysConfig: {},
+    durationSeconds: vbatSeries.length * 0.02,
+    mainFrames,
+    mainFieldNames: [
+      "rcCommand[0]", "rcCommand[1]", "rcCommand[2]", "rcCommand[3]", "time",
+      "flightModeFlags", "motor[0]", "Vbat"
+    ],
+    slowFrames: [],
+    gpsFrames: [],
+    events: [],
+    stats: { corruptFrames: 0 }
+  };
+}
+
+const BINDING_FRAMES = 400;
+
+test("sampler locks the cell count for the whole flight", () => {
+  // Start at 24.8 V (6S @ ~4.13), sag deep into the 5S-vs-6S
+  // ambiguous zone (20.4 V is the 6S/5S crossover): per-frame
+  // detection flips here, the latch must not.
+  const series = [];
+
+  for (let i = 0; i < BINDING_FRAMES; i += 1) {
+    const volts = Math.max(24.8 - i * 0.02, 19.8); // → 19.8..24.8
+    series.push(Math.round(volts * 100));
+  }
+
+  const sampler = createFlightSampler(syntheticFlight(series));
+
+  assert.equal(sampler.lockedCells, 6);
+
+  // First and last frames must both display 6S.
+  const first = sampler.frameAt(0);
+  const last = sampler.frameAt(sampler.durationSeconds - 0.001);
+
+  assert.equal(first.telemetry.cellCount, 6);
+  assert.equal(last.telemetry.cellCount, 6);
+  assert.ok(last.telemetry.perCell < 3.5, "deep sag still reads through 6S");
+});
+
+test("sampler latch is scrub-order independent", () => {
+  const series = [];
+
+  for (let i = 0; i < BINDING_FRAMES; i += 1) {
+    series.push(Math.round(Math.max(24.8 - i * 0.02, 19.8) * 100));
+  }
+
+  const a = createFlightSampler(syntheticFlight(series));
+  const b = createFlightSampler(syntheticFlight(series));
+
+  // Scrub backwards (end → start) vs forwards (start → end).
+  const back = [];
+  for (let t = a.durationSeconds - 0.02; t >= 0; t -= 0.5) {
+    back.push(a.frameAt(Math.max(t, 0)).telemetry.cellCount);
+  }
+
+  const forward = [];
+  for (let t = 0; t < a.durationSeconds; t += 0.5) {
+    forward.push(b.frameAt(t).telemetry.cellCount);
+  }
+
+  assert.equal(samplerCellsUnique(back), samplerCellsUnique(forward));
+});
+
+function samplerCellsUnique(values) {
+  return [...new Set(values)].join(",");
+}
+
+test("sampler without Vbat leaves telemetry untouched and unlocked", () => {
+  const flight = syntheticFlight(new Array(50).fill(0));
+
+  // Strip Vbat column: null index → no lock, no votes.
+  flight.mainFieldNames = flight.mainFieldNames.filter((n) => n !== "Vbat");
+  flight.mainFrames = flight.mainFrames.map((frame) => frame.slice(0, -1));
+
+  const sampler = createFlightSampler(flight);
+
+  assert.equal(sampler.lockedCells, null);
+  assert.equal(sampler.frameAt(0).telemetry.cellCount, null);
 });

@@ -299,6 +299,10 @@ export function flightTrace({ file, filePath, flight }) {
 let jobSeq = 0;
 let activeJob = null;
 
+// The most recently settled render, kept so its SSE channel
+// can close cleanly and /api/media can still answer.
+let lastFinishedJob = null;
+
 /** Outputs finished this session — the only files /api/media serves. */
 const completedOutputs = new Set();
 
@@ -405,6 +409,7 @@ export function startRenderJob({ file, filePath, flight, fps, theme, output }) {
       job.durationSeconds = result.durationSeconds;
       job.message = `done: ${result.frames} frames`;
       completedOutputs.add(resolve(job.output));
+      lastFinishedJob = job;
       broadcast(job, { type: "done", job: jobSnapshot(job) });
     })
     .catch((error) => {
@@ -412,6 +417,7 @@ export function startRenderJob({ file, filePath, flight, fps, theme, output }) {
       job.settled = true;
       job.error = error.message;
       job.message = `failed: ${error.message}`;
+      lastFinishedJob = job;
       broadcast(job, { type: "error", job: jobSnapshot(job) });
     })
     .finally(() => {
@@ -424,7 +430,16 @@ export function startRenderJob({ file, filePath, flight, fps, theme, output }) {
 }
 
 export function jobStatus(id) {
-  return activeJob && activeJob.id === id ? jobSnapshot(activeJob) : null;
+  if (activeJob && activeJob.id === id) {
+    return jobSnapshot(activeJob);
+  }
+
+  // Finished jobs stay answerable until the next render
+  // replaces them — the SSE channel and any late status
+  // poll land after finally() has cleared activeJob.
+  return lastFinishedJob && lastFinishedJob.id === id
+    ? jobSnapshot(lastFinishedJob)
+    : null;
 }
 
 export function currentJob() {
@@ -433,18 +448,33 @@ export function currentJob() {
 
 /**
  * Subscribe to live job events. Returns an unsubscribe
- * function, or null when the id does not match the active
- * job. A snapshot of the current state is delivered first.
+ * function, or null when the id is unknown. A snapshot of
+ * the current state is delivered first.
+ *
+ * The unsubscribe closure captures the job object itself —
+ * NOT the activeJob module variable, which is nulled the
+ * moment the render settles. Closing the SSE connection
+ * after a finished render must be a quiet no-op, not a
+ * crash.
  */
 export function subscribeJob(id, listener) {
-  if (!activeJob || activeJob.id !== id) {
+  const job =
+    activeJob && activeJob.id === id
+      ? activeJob
+      : lastFinishedJob && lastFinishedJob.id === id
+        ? lastFinishedJob
+        : null;
+
+  if (!job) {
     return null;
   }
 
-  listener({ type: "progress", job: jobSnapshot(activeJob) });
-  activeJob.listeners.add(listener);
+  listener({ type: "progress", job: jobSnapshot(job) });
+  job.listeners.add(listener);
 
-  return () => activeJob.listeners.delete(listener);
+  return () => {
+    job.listeners.delete(listener);
+  };
 }
 
 // ------------------------------------------------------

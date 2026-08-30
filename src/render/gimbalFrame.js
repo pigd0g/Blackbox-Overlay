@@ -147,6 +147,43 @@ function plotPixel(frame, x, y, color) {
   frame[offset + 3] = 255;
 }
 
+/**
+ * Src-over blend of one pixel: composites `color` at the
+ * given alpha (0-255) over whatever is already there
+ * (straight, non-premultiplied RGBA). Anti-aliased fringes
+ * therefore blend into an opaque gimbal box, and over the
+ * untouched alpha-mode background they carry partial alpha
+ * for a clean key in editors.
+ */
+function blendPixel(frame, x, y, color, alpha) {
+  if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) {
+    return;
+  }
+
+  const srcA = Math.min(255, Math.max(0, alpha));
+
+  if (srcA === 0) {
+    return;
+  }
+
+  const offset = (y * WIDTH + x) * 4;
+  const dstA = frame[offset + 3];
+  const dstWeight = (dstA * (255 - srcA)) / 255;
+  const outA = srcA + dstWeight;
+
+  if (outA <= 0) {
+    return;
+  }
+
+  for (let c = 0; c < 3; c += 1) {
+    frame[offset + c] = Math.round(
+      (color[c] * srcA + frame[offset + c] * dstWeight) / outA,
+    );
+  }
+
+  frame[offset + 3] = Math.round(outA);
+}
+
 export function pixelLineH(frame, x0, x1, y, color) {
   pixelRect(frame, x0, y, x1 - x0 + 1, 1, color);
 }
@@ -155,13 +192,58 @@ export function pixelLineV(frame, x, y0, y1, color) {
   pixelRect(frame, x, y0, 1, y1 - y0 + 1, color);
 }
 
+/**
+ * Anti-aliased filled circle. Interior pixels paint solid;
+ * the ring straddling the circle's edge blends by coverage
+ * (supersampled 4x4 per pixel) so the dot has smooth edges
+ * instead of hard jaggies. Blending is proper src-over, so
+ * alpha-mode frames keep graduated alpha at the rim.
+ */
 export function pixelDot(frame, cx, cy, radius, color) {
-  const r = Math.max(1, Math.round(radius));
+  const r = Math.max(1, radius);
+  const c = Math.ceil(r);
+  const SAMPLES = 4;
+  const SAMPLES_SQ = SAMPLES * SAMPLES;
 
-  for (let dy = -r; dy <= r; dy += 1) {
-    for (let dx = -r; dx <= r; dx += 1) {
-      if (dx * dx + dy * dy <= r * r) {
+  for (let dy = -c; dy <= c; dy += 1) {
+    for (let dx = -c; dx <= c; dx += 1) {
+      const ax = Math.abs(dx);
+      const ay = Math.abs(dy);
+
+      // Quick accept: the pixel's farthest corner is inside
+      // the circle, so it is fully covered — paint solid.
+      const farX = ax + 0.5;
+      const farY = ay + 0.5;
+
+      if (farX * farX + farY * farY <= r * r) {
         plotPixel(frame, cx + dx, cy + dy, color);
+        continue;
+      }
+
+      // Quick reject: the pixel's nearest corner is outside.
+      const nearX = ax - 0.5;
+      const nearY = ay - 0.5;
+
+      if (nearX * nearX + nearY * nearY > r * r) {
+        continue;
+      }
+
+      // Edge pixel: 4x4 supersample coverage → alpha.
+      let hit = 0;
+
+      for (let sy = 0; sy < SAMPLES; sy += 1) {
+        for (let sx = 0; sx < SAMPLES; sx += 1) {
+          const px = dx + (sx + 0.5) / SAMPLES - 0.5;
+          const py = dy + (sy + 0.5) / SAMPLES - 0.5;
+
+          if (px * px + py * py <= r * r) {
+            hit += 1;
+          }
+        }
+      }
+
+      if (hit > 0) {
+        blendPixel(frame, cx + dx, cy + dy, color, Math.round((hit / SAMPLES_SQ) * 255));
       }
     }
   }
@@ -383,7 +465,7 @@ function paintRightColumn(frame, y0, state, theme, shadow) {
   const perCellText =
     state.perCell === null || state.perCell === undefined
       ? "--"
-      : `${state.perCell.toFixed(2)}/C`;
+      : `${state.perCell.toFixed(2)}V`;
   const currentText =
     state.current === null || state.current === undefined
       ? "--"

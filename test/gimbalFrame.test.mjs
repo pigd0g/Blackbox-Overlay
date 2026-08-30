@@ -154,8 +154,10 @@ test("gimbal boxes have rounded-md corners (6 px)", () => {
   }
 });
 
-test("stick dots are #EE4266, radius 10 (twice the old 5)", () => {
-  const inset = GIMBAL_LAYOUT.size / 2 - 10 - 4;
+test("stick dots are #EE4266, radius 15, anti-aliased edges", () => {
+  // Keep in sync with paintGimbal: dotRadius 15, 4px margin.
+  const dotRadius = 15;
+  const inset = GIMBAL_LAYOUT.size / 2 - dotRadius - 4;
 
   const frame = paintStickFrame(
     { left: { x: 0, y: 0 }, right: { x: 1, y: 1 } },
@@ -171,11 +173,42 @@ test("stick dots are #EE4266, radius 10 (twice the old 5)", () => {
   // Center of the dot…
   assert.deepEqual(colorAt(frame, dotX, dotY), [0xee, 0x42, 0x66, 255]);
 
-  // …and 9 px out (inside a radius-10 dot; old radius 5 would miss).
-  assert.deepEqual(colorAt(frame, dotX + 9, dotY), [0xee, 0x42, 0x66, 255]);
+  // …and 14 px out (well inside a radius-15 dot)…
+  assert.deepEqual(colorAt(frame, dotX + 14, dotY), [0xee, 0x42, 0x66, 255]);
 
-  // …but 11 px out is outside the new dot (gimbal grey again).
-  assert.deepEqual(colorAt(frame, dotX + 11, dotY), [0x40, 0x40, 0x40, 255]);
+  // …while 16 px out is fully outside (pure gimbal grey).
+  assert.deepEqual(colorAt(frame, dotX + 16, dotY), [0x40, 0x40, 0x40, 255]);
+
+  // The rim at ~15 px blends dot red into the grey box:
+  // strictly between the two colors, fully opaque.
+  const rim = colorAt(frame, dotX + 15, dotY);
+
+  assert.notDeepEqual(rim, [0xee, 0x42, 0x66, 255]);
+  assert.notDeepEqual(rim, [0x40, 0x40, 0x40, 255]);
+  assert.ok(rim[0] > 0x40 && rim[0] < 0xee, "rim red between box and dot");
+  assert.ok(rim[2] > 0x40 && rim[2] < 0x66, "rim blue between box and dot");
+  assert.equal(rim[3], 255);
+});
+
+test("pixelDot blends partial coverage as real alpha over transparent buffers", () => {
+  const frame = new Uint8Array(WIDTH * HEIGHT * 4);
+
+  pixelDot(frame, 100, 100, 8, [10, 20, 30]);
+
+  // An edge pixel straddling the circle keeps graduated alpha
+  // (src-over onto nothing), not opaque paint.
+  let partial = null;
+
+  for (let x = 108; x <= 109 && !partial; x += 1) {
+    const o = (100 * WIDTH + x) * 4;
+
+    if (frame[o + 3] > 0 && frame[o + 3] < 255) {
+      partial = [frame[o], frame[o + 1], frame[o + 2], frame[o + 3]];
+    }
+  }
+
+  assert.ok(partial, "edge pixel with 0 < alpha < 255 exists");
+  assert.deepEqual(partial.slice(0, 3), [10, 20, 30], "straight alpha RGB");
 });
 
 test("gimbals sit inside the new 800px frame", () => {
@@ -339,14 +372,13 @@ test("pixelRect clips out-of-bounds writes safely", () => {
   });
 });
 
-test("bitmap font renders the ° and / glyphs for ESC + V/C", () => {
+test("bitmap font renders the ° glyph for ESC readouts", () => {
   assert.ok(getGlyph("°"), "degree glyph missing");
-  assert.ok(getGlyph("/"), "slash glyph missing");
 
   const frame = new Uint8Array(WIDTH * HEIGHT * 4);
 
   assert.doesNotThrow(() => {
-    pixelText(frame, WIDTH, HEIGHT, 10, 10, "ESC 63°C V/C", [1, 2, 3], 2);
+    pixelText(frame, WIDTH, HEIGHT, 10, 10, "ESC 63°C", [1, 2, 3], 2);
   });
 });
 

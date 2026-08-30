@@ -367,46 +367,11 @@ function addThemeCard(name) {
 
   els.themeStack.appendChild(card);
 
-  paintSwatch(canvas, name);
-}
-
-let swatchToken = 0;
-
-async function paintSwatch(canvas, themeName) {
-  const myLog = state.logPath;
-  const myFlight = state.flight;
-
-  if (!myLog || !myFlight) {
-    paintStaticSwatch(canvas, themeName);
-    return;
-  }
-
-  const token = (swatchToken += 1);
-  const t = state.durationSeconds * 0.4;
-
-  const frame = await fetchPreview(
-    {
-      file: myLog,
-      flight: myFlight,
-      t,
-      theme: themeName,
-      alpha: false,
-      // Live color edits paint live swatches, but only for
-      // the theme card they actually apply to.
-      themeOverrides:
-        themeName === state.theme ? effectiveThemeOverrideList() : undefined
-    },
-    token
-  );
-
-  if (
-    frame &&
-    frame.token === token &&
-    state.logPath === myLog &&
-    state.flight === myFlight
-  ) {
-    drawFrameTo(canvas, frame);
-  }
+  // Swatches stay a static miniature of each theme's palette
+  // (painted locally from THEME_HEX). They deliberately do
+  // NOT switch to live log frames once a flight is loaded —
+  // the monitor exists for that.
+  paintStaticSwatch(canvas, name);
 }
 
 // Before a log is loaded, swatches are drawn locally from
@@ -954,7 +919,7 @@ function renderFields(flight) {
 
 function refreshSwatches() {
   for (const card of els.themeStack.children) {
-    paintSwatch(card.querySelector("canvas"), card.dataset.theme);
+    paintStaticSwatch(card.querySelector("canvas"), card.dataset.theme);
   }
 }
 

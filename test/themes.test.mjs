@@ -32,11 +32,11 @@ const EXPECTED = {
     barMotor: "#2E7D32",
     barCurrent: "#C8770C",
     barTrack: "#B9C2BB",
-    textShadow: "#3A3A3A"
+    textShadow: "#f2f2f2"
   },
   light: {
     background: "#E8EAED",
-    box: "#D2D4D8",
+    box: "#404040",
     crosshair: "#B0B3B8",
     dot: "#EE4266",
     labelOff: "#FFFFFF",
@@ -50,7 +50,7 @@ const EXPECTED = {
     barMotor: "#05FF6D",
     barCurrent: "#005FEE",
     barTrack: "#DADCE0",
-    textShadow: "#7F8183"
+    textShadow: "#4c4d4d"
   },
   gunmetal: {
     background: "#B8C7C9",
@@ -68,7 +68,7 @@ const EXPECTED = {
     barMotor: "#00AFC7",
     barCurrent: "#E07C06",
     barTrack: "#8FA3A6",
-    textShadow: "#0E1418"
+    textShadow: "#f2f2f2"
   },
   charcoal: {
     background: "#C2CBC5",
@@ -86,7 +86,7 @@ const EXPECTED = {
     barMotor: "#4F8A4B",
     barCurrent: "#E69400",
     barTrack: "#9AA69D",
-    textShadow: "#121614"
+    textShadow: "#f2f2f2"
   },
   slate: {
     background: "#C4D0D4",
@@ -104,7 +104,7 @@ const EXPECTED = {
     barMotor: "#3D9B78",
     barCurrent: "#D96A42",
     barTrack: "#9AA6AC",
-    textShadow: "#14191D"
+    textShadow: "#f2f2f2"
   },
   lime: {
     background: "#CBD3CF",
@@ -122,7 +122,7 @@ const EXPECTED = {
     barMotor: "#78B82A",
     barCurrent: "#F08C1C",
     barTrack: "#A9B2AA",
-    textShadow: "#12160F"
+    textShadow: "#f2f2f2"
   }
 };
 

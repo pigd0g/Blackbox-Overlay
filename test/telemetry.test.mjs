@@ -83,10 +83,10 @@ test("cellStatus flags low and full per-cell readings", () => {
   assert.equal(cellStatus(Number.NaN), null);
 });
 
-test("readTelemetry: Vbat /100, headspeed as RPM", () => {
+test("readTelemetry: Vbat /100, headspeed as RPM, motor %, Ibat, Tesc", () => {
   // Main frame indexes: roll, pitch, yaw, collective, time,
-  // throttle, motor, vbat, headspeed.
-  const mainFrame = [0, 0, 0, 146, 86_200_000, 1000, 680, 2380, 1978];
+  // throttle, motor, vbat, headspeed, ibat, tesc.
+  const mainFrame = [0, 0, 0, 146, 86_200_000, 1000, 725, 2380, 1978, 2450, 55];
 
   const binding = {
     columnIndexes: {
@@ -98,7 +98,9 @@ test("readTelemetry: Vbat /100, headspeed as RPM", () => {
       throttle: 5,
       motor: 6,
       vbat: 7,
-      headspeed: 8
+      headspeed: 8,
+      ibat: 9,
+      tesc: 10
     }
   };
 
@@ -108,11 +110,14 @@ test("readTelemetry: Vbat /100, headspeed as RPM", () => {
     packVolts: 23.8,
     cellCount: 6,
     perCell: 3.97,
-    rpm: 1978
+    rpm: 1978,
+    motorPct: 72.5,
+    current: 24.5,
+    escTemp: 55
   });
 });
 
-test("readTelemetry: missing Vbat / headspeed columns read null", () => {
+test("readTelemetry: missing Vbat / headspeed / Ibat / Tesc columns read null", () => {
   const mainFrame = [0, 0, 0, 0, 0, 0];
 
   const binding = {
@@ -125,7 +130,9 @@ test("readTelemetry: missing Vbat / headspeed columns read null", () => {
       throttle: 5,
       motor: -1,
       vbat: -1,
-      headspeed: -1
+      headspeed: -1,
+      ibat: -1,
+      tesc: -1
     }
   };
 
@@ -133,8 +140,33 @@ test("readTelemetry: missing Vbat / headspeed columns read null", () => {
     packVolts: null,
     cellCount: null,
     perCell: null,
-    rpm: null
+    rpm: null,
+    motorPct: null,
+    current: null,
+    escTemp: null
   });
+});
+
+test("readTelemetry: motor clamps to [0, 100] %", () => {
+  const mainFrame = [0, 0, 0, 0, 0, 0, 1250, 0, 0, 0, 0];
+
+  const binding = {
+    columnIndexes: {
+      roll: 0,
+      pitch: 1,
+      yaw: 2,
+      collective: 3,
+      time: 4,
+      throttle: 5,
+      motor: 6,
+      vbat: -1,
+      headspeed: -1,
+      ibat: -1,
+      tesc: -1
+    }
+  };
+
+  assert.equal(readTelemetry(mainFrame, binding).motorPct, 100);
 });
 
 // ------------------------------------------------------
@@ -160,6 +192,33 @@ function syntheticFlight(vbatSeries) {
       "flightModeFlags", "motor[0]", "Vbat"
     ],
     slowFrames: [],
+    gpsFrames: [],
+    events: [],
+    stats: { corruptFrames: 0 }
+  };
+}
+
+/**
+ * An Ibat-instrumented flight for the running-max tests:
+ * current reads 20.00 A, then 35.64 A, 35.64 A, 35.64 A.
+ */
+function currentFlight() {
+  const ibatSeries = [2000, 3564, 3564, 3564];
+  const mainFrames = ibatSeries.map((centiAmps, i) => [
+    0, 0, 0, 0, i * 20_000, 0, i > 0 ? 500 : 0, 2480, 1990, centiAmps, 40
+  ]);
+
+  return {
+    index: 0,
+    sysConfig: {},
+    durationSeconds: mainFrames.length * 0.02,
+    mainFrames,
+    mainFieldNames: [
+      "rcCommand[0]", "rcCommand[1]", "rcCommand[2]", "rcCommand[3]", "time",
+      "rcCommand[4]", "motor[0]", "Vbat", "headspeed", "Ibat", "Tesc"
+    ],
+    slowFieldNames: ["flightModeFlags"],
+    slowFrames: [{ afterMainFrame: -1, values: [1] }],
     gpsFrames: [],
     events: [],
     stats: { corruptFrames: 0 }
@@ -231,4 +290,52 @@ test("sampler without Vbat leaves telemetry untouched and unlocked", () => {
 
   assert.equal(sampler.lockedCells, null);
   assert.equal(sampler.frameAt(0).telemetry.cellCount, null);
+});
+
+// ------------------------------------------------------
+// Running max current (sampler level)
+// ------------------------------------------------------
+
+test("sampler reports running max current per frame", () => {
+  const sampler = createFlightSampler(currentFlight());
+
+  const values = [0, 1, 2, 3].map((i) =>
+    sampler.frameAt(i * 0.02).telemetry.maxCurrent
+  );
+
+  // Peak appears at row 1 and never decreases afterwards.
+  assert.deepEqual(values, [20, 35.64, 35.64, 35.64]);
+});
+
+test("sampler running max is scrub-order independent", () => {
+  const a = createFlightSampler(currentFlight());
+  const b = createFlightSampler(currentFlight());
+
+  // Step through explicit times instead of float-drifting
+  // accumulators; each sampler visits in its own order.
+  const times = [0, 0.02, 0.04, 0.06];
+  const forward = times.map((t) => a.frameAt(t).telemetry.maxCurrent);
+  const backward = times
+    .slice()
+    .reverse()
+    .map((t) => b.frameAt(t).telemetry.maxCurrent)
+    .reverse();
+
+  assert.deepEqual(forward, backward);
+});
+
+test("sampler without Ibat leaves maxCurrent null", () => {
+  const flight = currentFlight();
+
+  flight.mainFieldNames = flight.mainFieldNames.filter((n) => n !== "Ibat");
+  flight.mainFrames = flight.mainFrames.map((frame) => {
+    const copy = frame.slice();
+    copy.splice(9, 1);
+    return copy;
+  });
+
+  const sampler = createFlightSampler(flight);
+
+  assert.equal(sampler.frameAt(0).telemetry.maxCurrent, null);
+  assert.equal(sampler.frameAt(0.02).telemetry.maxCurrent, null);
 });

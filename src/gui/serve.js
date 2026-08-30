@@ -302,8 +302,14 @@ async function handleApi(req, res, url) {
 
     const sourceFile = body.path ?? body.file;
     // Renders always land in <cwd>/out/ — a bare name keeps
-    // its stem, anything path-like is flattened.
-    const output = resolveOutputPath(body.output, sourceFile, body.flight);
+    // its stem, anything path-like is flattened. Alpha
+    // renders (transparent background) encode ProRes 4444.
+    const output = resolveOutputPath(
+      body.output,
+      sourceFile,
+      body.flight,
+      body.alpha === true
+    );
 
     try {
       const started = startRenderJob({
@@ -311,6 +317,9 @@ async function handleApi(req, res, url) {
         flight: body.flight,
         fps: body.fps,
         theme: body.theme,
+        themeOverrides: body.themeOverrides,
+        alpha: body.alpha,
+        shadow: body.shadow,
         output
       });
 

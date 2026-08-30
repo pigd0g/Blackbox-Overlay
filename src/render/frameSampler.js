@@ -20,7 +20,7 @@ import {
   readToggleState,
   timeToRowIndex
 } from "./stickMapping.js";
-import { readTelemetry, detectCells } from "./telemetry.js";
+import { readTelemetry, detectCells, CURRENT_SCALE } from "./telemetry.js";
 
 const DEFAULT_LOOP_INTERVAL_US = 20_000;
 
@@ -117,6 +117,42 @@ export function createFlightSampler(flight) {
     lockedCells = bestCount;
   }
 
+  // ------------------------------------------------------
+  // Running max current (prefix max)
+  //
+  // The current-vs-max bar reads the peak seen SO FAR, not
+  // the flight-wide peak: it hits 100% the moment a new max
+  // lands during playback. One forward pass builds a prefix
+  // array so frameAt() stays scrub-order independent —
+  // maxCurrentUpTo(row) is pure, no cursor state.
+  // ------------------------------------------------------
+  const ibatIndex = binding.columnIndexes.ibat;
+  const maxCurrentPrefix = new Array(flight.mainFrames.length).fill(null);
+  let runningMax = null;
+
+  if (ibatIndex >= 0) {
+    for (let row = 0; row < flight.mainFrames.length; row += 1) {
+      const raw = Number(flight.mainFrames[row][ibatIndex]);
+
+      if (!Number.isFinite(raw) || raw < 0) {
+        continue;
+      }
+
+      const amps = raw / CURRENT_SCALE;
+
+      if (runningMax === null || amps > runningMax) {
+        runningMax = amps;
+      }
+
+      maxCurrentPrefix[row] = runningMax;
+    }
+  }
+
+  const maxCurrentUpTo = (row) =>
+    row >= 0 && row < maxCurrentPrefix.length
+      ? maxCurrentPrefix[row]
+      : null;
+
   function frameAt(tSeconds) {
     if (!Number.isFinite(tSeconds)) {
       return null;
@@ -157,6 +193,9 @@ export function createFlightSampler(flight) {
           : Math.round((telemetry.packVolts / lockedCells) * 100) / 100;
     }
 
+    // Peak current so far (running max over [0, row]).
+    telemetry.maxCurrent = maxCurrentUpTo(row);
+
     return { row, positions, toggles, telemetry };
   }
 
@@ -168,6 +207,9 @@ export function createFlightSampler(flight) {
     get lockedCells() {
       return lockedCells;
     },
+
+    /** Running-max current array accessor (tests/debug). */
+    maxCurrentUpTo,
 
     frameAt
   };

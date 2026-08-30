@@ -126,8 +126,12 @@ test("state reports themes and ffmpeg availability", async () => {
 
   assert.equal(typeof payload.ffmpeg, "boolean");
   assert.ok(Array.isArray(payload.themes.names));
-  assert.ok(payload.themes.names.length >= 5);
+  assert.ok(payload.themes.names.length >= 6);
+  assert.ok(Array.isArray(payload.themes.keys));
+  assert.equal(payload.themes.keys.length, 16);
   assert.match(payload.themes.themes.default.dot, /^#[0-9a-f]{6}$/i);
+  assert.match(payload.themes.themes.default.barMotor, /^#[0-9a-f]{6}$/i);
+  assert.match(payload.themes.themes.light.dot, /^#[0-9a-f]{6}$/i);
 });
 
 test("browse lists directories and .bbl files", async () => {
@@ -174,17 +178,87 @@ test("preview returns a RGBA frame with dimensions", async () => {
   });
 
   assert.equal(response.status, 200);
-  assert.equal(response.headers.get("X-Frame-Width"), "500");
-  assert.equal(response.headers.get("X-Frame-Height"), "300");
+  assert.equal(response.headers.get("X-Frame-Width"), "800");
+  assert.equal(response.headers.get("X-Frame-Height"), "262");
 
   const buffer = Buffer.from(await response.arrayBuffer());
 
-  assert.equal(buffer.length, 500 * 300 * 4);
+  assert.equal(buffer.length, 800 * 262 * 4);
 
   // RGBA: alpha channel is 255 every fourth byte (sampled).
   for (const index of [3, 4003, 10003]) {
     assert.equal(buffer[index], 255);
   }
+});
+
+test("preview with alpha leaves the background transparent", async () => {
+  if (!hasFixture) return;
+
+  const response = await fetch(`${base}/api/preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      file: FIXTURE,
+      flight: 1,
+      t: 1.5,
+      theme: "gunmetal",
+      alpha: true
+    })
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("X-Frame-Width"), "800");
+  assert.equal(response.headers.get("X-Frame-Height"), "262");
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+
+  // Top-left corner stays transparent; a gimbal-box pixel
+  // (first gimbal center-ish) stays opaque.
+  const alphaAt = (x, y) => buffer[(y * 800 + x) * 4 + 3];
+
+  assert.equal(alphaAt(2, 2), 0);
+
+  // The left gimbal spans 192..392 x 32..232: its center is
+  // inside the box.
+  assert.equal(alphaAt(292, 132), 255);
+});
+
+test("preview honors per-key theme overrides", async () => {
+  if (!hasFixture) return;
+
+  const probe = async (overrides) => {
+    const response = await fetch(`${base}/api/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file: FIXTURE,
+        flight: 1,
+        t: 1.5,
+        theme: "default",
+        ...(overrides ? { themeOverrides: overrides } : {})
+      })
+    });
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+
+    // The stick dot at t=1.5s sits somewhere inside the left
+    // gimbal — compare the count of exact dot-colored pixels.
+    let dotish = 0;
+
+    for (let i = 0; i < buffer.length; i += 4) {
+      if (buffer[i] === 0xee && buffer[i + 1] === 0x42 && buffer[i + 2] === 0x66) {
+        dotish += 1;
+      }
+    }
+
+    return dotish;
+  };
+
+  const baseline = await probe(null);
+  const overridden = await probe({ dot: "#00FF88" });
+
+  assert.ok(baseline > 0, "default dot should be present");
+  assert.equal(overridden, 0, "overridden dot color replaces #EE4266");
 });
 
 test("preview rejects unknown flights", async () => {
@@ -285,8 +359,9 @@ test("render job runs end-to-end with SSE progress and downloadable media", asyn
     return; // CI/test boxes without ffmpeg still validate the API surface.
   }
 
-  const outDir = mkdtempSync(join(tmpdir(), "rfbvo-gui-"));
-  const output = join(outDir, "gui-test.mp4");
+  // Render outputs always land in <cwd>/out/ — the name is
+  // all the client controls.
+  const output = "gui-test-theme-overrides.mp4";
 
   try {
     const startResponse = await fetch(`${base}/api/render`, {
@@ -297,6 +372,7 @@ test("render job runs end-to-end with SSE progress and downloadable media", asyn
         flight: 1,
         fps: 30,
         theme: "charcoal",
+        themeOverrides: { dot: "#00FF88", barMotor: "#FF8800" },
         output
       })
     });
@@ -322,6 +398,12 @@ test("render job runs end-to-end with SSE progress and downloadable media", asyn
     assert.ok(finalJob.frames > 100);
     assert.ok(existsSync(finalJob.output));
 
+    // The overrides ride along on the job snapshot.
+    assert.deepEqual(finalJob.themeOverrides, {
+      dot: "#00FF88",
+      barMotor: "#FF8800"
+    });
+
     const media = await fetch(
       `${base}/api/media?path=${encodeURIComponent(finalJob.output)}`
     );
@@ -334,9 +416,13 @@ test("render job runs end-to-end with SSE progress and downloadable media", asyn
     assert.ok(bytes.length > 10_000, "mp4 should have real content");
     assert.deepEqual(bytes.slice(4, 8).toString(), "ftyp");
   } finally {
-    rmSync(outDir, { recursive: true, force: true });
+    rmSync(finalJobOutput(), { recursive: true, force: true });
   }
 });
+
+function finalJobOutput() {
+  return join(process.cwd(), "out", "gui-test-theme-overrides.mp4");
+}
 
 test("media endpoint refuses paths that never rendered", async () => {
   if (!hasFixture) return;
@@ -355,14 +441,20 @@ test("server survives SSE close after the render settles", async () => {
 
   if (!state.ffmpeg) return;
 
-  const outDir = mkdtempSync(join(tmpdir(), "rfbvo-sse-"));
-  const output = join(outDir, "sse-close.mp4");
+  const output = "sse-close-alpha.mp4";
 
   try {
     const startResponse = await fetch(`${base}/api/render`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: FIXTURE, flight: 1, fps: 30, theme: "slate", output })
+      body: JSON.stringify({
+        path: FIXTURE,
+        flight: 1,
+        fps: 30,
+        theme: "slate",
+        alpha: true,
+        output
+      })
     });
 
     assert.equal(startResponse.status, 202);
@@ -373,12 +465,27 @@ test("server survives SSE close after the render settles", async () => {
     // browser's EventSource/fetch always closes right after
     // it sees a terminal event. Previously this crashed the
     // server (unsubscribe touched nulled activeJob).
-    await consumeSse(`${base}/api/jobs/${jobId}/events`, (event) => {
-      if (event.type === "error") {
-        throw new Error(event.job.error || "render failed");
-      }
-      return event.type === "done"; // abort on done
+    const finalJob = await new Promise((resolvePromise, rejectPromise) => {
+      let failed = false;
+
+      consumeSse(`${base}/api/jobs/${jobId}/events`, (event) => {
+        if (event.type === "error") {
+          failed = true;
+          rejectPromise(new Error(event.job.error || "render failed"));
+          return true;
+        }
+        if (event.type === "done") {
+          resolvePromise(event.job);
+          return true;
+        }
+        return false;
+      }).catch(rejectPromise);
     });
+
+    // Alpha renders must land as .mov (ProRes 4444).
+    assert.match(finalJob.output, /\.mov$/);
+    assert.equal(finalJob.alpha, true);
+    assert.ok(existsSync(finalJob.output));
 
     // Give the server a beat to run the close handler that
     // used to throw.
@@ -400,6 +507,6 @@ test("server survives SSE close after the render settles", async () => {
 
     assert.equal(snapshot.state, "done");
   } finally {
-    rmSync(outDir, { recursive: true, force: true });
+    // Nothing to clean: outputs live in <cwd>/out/.
   }
 });

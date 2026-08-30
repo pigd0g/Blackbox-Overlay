@@ -85,3 +85,25 @@ test("resolveOutputPath falls back to the log-based default", () => {
   assertInOutDir(result);
   assert.match(result, /file-flight3-sticks\.mp4$/);
 });
+
+test("resolveOutputPath forces .mov for alpha renders", () => {
+  const named = resolveOutputPath("my-video.mp4", "a.bbl", 1, true);
+
+  assertInOutDir(named);
+  assert.equal(resolve(named), resolve(OUT_DIR, "my-video.mov"));
+
+  const fallback = resolveOutputPath("", "some/log/file.bbl", 3, true);
+
+  assert.equal(
+    resolve(fallback),
+    resolve(suggestOutputPath("some/log/file.bbl", 3, true))
+  );
+  assert.match(fallback, /file-flight3-sticks\.mov$/);
+});
+
+test("resolveOutputPath keeps .mp4 when alpha is off", () => {
+  const named = resolveOutputPath("clip.mov", "a.bbl", 1, false);
+
+  // The user's stem survives; the extension follows the mode.
+  assert.equal(resolve(named), resolve(OUT_DIR, "clip.mp4"));
+});

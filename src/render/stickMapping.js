@@ -33,9 +33,11 @@ const ARM_FLAG_BIT = 1;
 const FLIGHT_MODE_FLAGS = "flightModeFlags";
 const MOTOR_FIELD = "motor[0]";
 
-// Telemetry feeds for the status bar.
+// Telemetry feeds for the status columns.
 const VBAT_FIELD = "Vbat";
 const HEADSPEED_FIELD = "headspeed";
+const IBAT_FIELD = "Ibat";
+const TESC_FIELD = "Tesc";
 
 // The log states its own deflection range: RF logs use ±500
 // for every rcCommand axis, but nothing is assumed — the
@@ -93,7 +95,9 @@ export function detectScales(flight) {
       throttle: throttleIndex >= 0 ? throttleIndex : columns[3].index,
       motor: flight.mainFieldNames.indexOf(MOTOR_FIELD),
       vbat: flight.mainFieldNames.indexOf(VBAT_FIELD),
-      headspeed: flight.mainFieldNames.indexOf(HEADSPEED_FIELD)
+      headspeed: flight.mainFieldNames.indexOf(HEADSPEED_FIELD),
+      ibat: flight.mainFieldNames.indexOf(IBAT_FIELD),
+      tesc: flight.mainFieldNames.indexOf(TESC_FIELD)
     },
     slowColumnIndexes: {
       flightModeFlags: flight.slowFieldNames
@@ -114,6 +118,7 @@ export function detectScales(flight) {
  *
  *   throttle — throttle channel (rcCommand[4] in Rotorflight
  *              logs, rcCommand[3] fallback) above 0
+ *   motorOn  — motor[0] output above 0
  *   armed    — flightModeFlags bit 0 (the ARM box) from the
  *              slow-frame values carried forward to this
  *              main frame; falls back to motor[0] > 0 when
@@ -127,6 +132,10 @@ export function readToggleState(mainFrame, slowValues, binding) {
   const { columnIndexes, slowColumnIndexes } = binding;
 
   const throttle = Number(mainFrame[columnIndexes.throttle]) || 0;
+  const motorValue =
+    columnIndexes.motor >= 0
+      ? Number(mainFrame[columnIndexes.motor]) || 0
+      : 0;
 
   let armed = false;
 
@@ -136,11 +145,12 @@ export function readToggleState(mainFrame, slowValues, binding) {
         ARM_FLAG_BIT) ===
       ARM_FLAG_BIT;
   } else if (columnIndexes.motor >= 0) {
-    armed = (Number(mainFrame[columnIndexes.motor]) || 0) > 0;
+    armed = motorValue > 0;
   }
 
   return {
     armed,
+    motorOn: motorValue > 0,
     throttle: throttle > 0
   };
 }

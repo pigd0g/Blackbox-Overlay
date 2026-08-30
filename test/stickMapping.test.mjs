@@ -115,22 +115,22 @@ test("readToggleState: throttle = rcCommand[4], armed = flightModeFlags bit 0", 
   // (flag cleared after pre-log values) → not armed, throttle 0.
   assert.deepEqual(
     readToggleState(flight.mainFrames[0], slowAt(0), binding),
-    { armed: false, throttle: false }
+    { armed: false, motorOn: false, throttle: false }
   );
   // Frame 1: flag cleared → throttle channel drives only throttle.
   assert.deepEqual(
     readToggleState(flight.mainFrames[1], slowAt(1), binding),
-    { armed: false, throttle: true }
+    { armed: false, motorOn: true, throttle: true }
   );
   // Frame 2: flag set again, throttle 0, motor spinning.
   assert.deepEqual(
     readToggleState(flight.mainFrames[2], slowAt(2), binding),
-    { armed: true, throttle: false }
+    { armed: true, motorOn: true, throttle: false }
   );
   // Frame 3: latest slow (afterMainFrame=2) still applies.
   assert.deepEqual(
     readToggleState(flight.mainFrames[3], slowAt(3), binding),
-    { armed: true, throttle: false }
+    { armed: true, motorOn: false, throttle: false }
   );
 });
 
@@ -155,6 +155,7 @@ test("readToggleState: collective (rcCommand[3]) never drives toggles", () => {
 
   assert.deepEqual(readToggleState(flight.mainFrames[0], flight.slowFrames[0].values, binding), {
     armed: false,
+    motorOn: false,
     throttle: false
   });
 });
@@ -183,10 +184,12 @@ test("readToggleState falls back to motor[0] without flightModeFlags", () => {
 
   assert.deepEqual(readToggleState(flight.mainFrames[0], noSlow, binding), {
     armed: false,
+    motorOn: false,
     throttle: false
   });
   assert.deepEqual(readToggleState(flight.mainFrames[1], noSlow, binding), {
     armed: true,
+    motorOn: true,
     throttle: true
   });
 });
@@ -201,8 +204,9 @@ test("readToggleState: Betaflight-style 4-channel log throttles on rcCommand[3]"
 
   assert.equal(binding.columnIndexes.throttle, binding.columnIndexes.collective);
   assert.deepEqual(readToggleState(flight.mainFrames[0], null, binding), {
-    // No slow flags, no motor field → armed stays false.
+    // No slow flags, no motor field → armed/motorOn stay false.
     armed: false,
+    motorOn: false,
     throttle: true
   });
 });

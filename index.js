@@ -5,13 +5,14 @@
 //
 // Usage:
 //   rotorflight-blackbox-video-overlay <file.bbl> [--fields] [--json] [--flight N]
-//                         [--video [out.mp4]] [--fps N]
+//                         [--video [out.mp4]] [--fps N] [--theme NAME] [--alpha]
 //
 //   --fields    list every main-frame field name per flight
 //   --json      machine-readable summary (JSON on stdout)
 //   --flight N  only report flight N (1-based)
-//   --video     render a green-screen gimbal-stick .mp4
+//   --video     render the gimbal-stick overlay video
 //   --fps N     video frame rate (default 30)
+//   --alpha     transparent background (ProRes 4444 .mov)
 //
 // Analysis arrives in phase 2; today this decodes the log,
 // describes it, and renders stick-position video.
@@ -39,11 +40,16 @@ Options:
   --fields          list main-frame field names for each flight
   --json            emit the summary as JSON
   --flight N        only show flight N (1-based)
-  --video [out.mp4] render a green-screen gimbal-stick video
-                    (default: <logname>-sticks.mp4)
+  --video [out.ext] render the gimbal-stick overlay video
+                    (default: <logname>-sticks.mp4; with --alpha,
+                     <logname>-sticks.mov)
   --fps N           video frame rate (default 30)
   --theme NAME      color theme for the video:
                     ${THEME_NAMES.join(", ")} (default: default)
+  --alpha           transparent background — renders ProRes 4444
+                    .mov with alpha for editor overlays
+  --shadow          draw the theme's drop shadow under text
+                    (default: off)
   --help            show this help`);
 }
 
@@ -54,7 +60,9 @@ function parseArgs(argv) {
     json: false,
     video: null,
     fps: null,
-    theme: null
+    theme: null,
+    alpha: false,
+    shadow: false
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -99,6 +107,10 @@ function parseArgs(argv) {
       // Validate early so a typo fails before any work.
       resolveTheme(name);
       options.theme = name.toLowerCase();
+    } else if (arg === "--alpha") {
+      options.alpha = true;
+    } else if (arg === "--shadow") {
+      options.shadow = true;
     } else if (arg === "--flight") {
       i += 1;
       const value = Number(argv[i]);
@@ -285,17 +297,21 @@ async function renderVideos(selected, options) {
     const outputPath =
       typeof options.video === "string"
         ? options.video
-        : defaultVideoPath(options.file);
+        : defaultVideoPath(options.file, options.alpha);
 
     console.log(
       `\nRendering sticks video for flight ${flight.index + 1}` +
         `${options.theme ? ` (theme: ${options.theme})` : ""}` +
+        `${options.alpha ? " (alpha: ProRes 4444)" : ""}` +
+        `${options.shadow ? " (shadow on)" : ""}` +
         ` -> ${outputPath}`
     );
 
     const result = await renderStickVideo(flight, outputPath, {
       fps: options.fps ?? undefined,
       theme: options.theme ?? undefined,
+      alpha: options.alpha,
+      shadow: options.shadow,
       onProgress: (message) => {
         process.stdout.write(`\r  ${message}    `);
       }

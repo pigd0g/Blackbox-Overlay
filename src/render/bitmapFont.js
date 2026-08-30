@@ -6,9 +6,10 @@
 // A-Z, digits, and a little punctuation. Every glyph is
 // seven strings of five '0'/'1' bits, top row first.
 //
-// pixelText() renders with an integer scale; labels like
-// "ARMED" / "THROTTLE" use scale 2 (10x14 per glyph) so
-// they stay readable in the overlay. An optional shadow
+// pixelText() renders with an integer scale; telemetry
+// values like "ARMED" / "22.20V" use scale 3 (15x21 per
+// glyph) and their tiny labels scale 2, so they stay
+// readable in the overlay. An optional shadow
 // color draws a hard drop shadow offset +scale px diagonally
 // beneath the glyphs — keeps text readable over busy
 // footage and both light and dark themes.

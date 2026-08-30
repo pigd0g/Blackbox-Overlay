@@ -40,14 +40,18 @@ export const GIMBAL_LAYOUT = (() => {
   const top = Math.floor((HEIGHT - size) / 2) + 1; // 32
 
   // Left cluster: text column, motor bar, left gimbal.
+  // "MOTOR OFF" at scale 3 needs 159px, ending at 174.
   const leftTextX = 16;
-  const leftBarX0 = 174; // 174..186
-  const leftX0 = 192; // 192..392
+  const leftBarX0 = 180; // 180..192
+  const leftX0 = 198; // 198..398
 
   // Right cluster: right gimbal, current bar, text column.
-  const rightX0 = 476; // 476..676
-  const rightBarX0 = 682; // 682..694
-  const rightTextX = 700; // "VBAT 22.20V" needs 97px → ends 797
+  // The gimbals sit close together to buy the value column
+  // room: "VBAT 22.20V" at label scale 2 + value scale 3
+  // needs 155px → 640..794 (+3px shadow).
+  const rightX0 = 415; // 415..615
+  const rightBarX0 = 621; // 621..633
+  const rightTextX = 640;
 
   return {
     size,
@@ -235,14 +239,14 @@ export function paintVerticalBar(
 
 // Paint rules for the telemetry text columns. The x origins
 // come from GIMBAL_LAYOUT (leftTextX / rightTextX). The 4px
-// label→value gap keeps "VBAT 22.20V" inside the 90px right
+// label→value gap keeps "VBAT 22.20V" inside the 155px right
 // text column. Every glyph draws with a hard drop shadow
 // (theme.textShadow, offset +scale px diagonally) — pass a
 // theme without textShadow to skip it.
-const LINE_STRIDE = 30; // value glyphs are 14px tall at scale 2
+const LINE_STRIDE = 34; // value glyphs are 21px tall at scale 3
 const BAR_WIDTH = 13;
-const LABEL_SCALE = 1;
-const VALUE_SCALE = 2;
+const LABEL_SCALE = 2;
+const VALUE_SCALE = 3;
 const LABEL_GAP = 4;
 
 /**
@@ -569,7 +573,7 @@ export function paintStickFrame(
     theme,
   );
 
-  // Value glyphs are 14px tall at scale 2; the column starts
+  // Value glyphs are 21px tall at scale 3; the column starts
   // a third of the way down so seven lines stay inside 262px.
   const columnTop = GIMBAL_LAYOUT.top + 12;
 

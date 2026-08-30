@@ -100,14 +100,14 @@ export const THEMES = {
     barMotor: "#2E7D32",
     barCurrent: "#C8770C",
     barTrack: "#B9C2BB",
-    textShadow: "#3A3A3A",
+    textShadow: "#f2f2f2",
   }),
 
   // Paper-white light theme: white text on pale gray,
   // light progress bars, light gray sticks, white dots.
   light: theme({
     background: "#E8EAED",
-    box: "#D2D4D8",
+    box: "#404040",
     crosshair: "#B0B3B8",
     dot: "#EE4266",
     labelOff: "#FFFFFF",
@@ -121,7 +121,7 @@ export const THEMES = {
     barMotor: "#05ff6d",
     barCurrent: "#005fee",
     barTrack: "#DADCE0",
-    textShadow: "#7f8183",
+    textShadow: "#4c4d4d",
   }),
 
   // Gunmetal + Electric Cyan — clean, modern flight
@@ -143,7 +143,7 @@ export const THEMES = {
     barMotor: "#00AFC7",
     barCurrent: "#E07C06",
     barTrack: "#8FA3A6",
-    textShadow: "#0E1418",
+    textShadow: "#f2f2f2",
   }),
 
   // Charcoal + Amber — aviation / military instrumentation.
@@ -163,7 +163,7 @@ export const THEMES = {
     barMotor: "#4F8A4B",
     barCurrent: "#E69400",
     barTrack: "#9AA69D",
-    textShadow: "#121614",
+    textShadow: "#f2f2f2",
   }),
 
   // Slate + Magenta — modern FPV; close to the default
@@ -184,7 +184,7 @@ export const THEMES = {
     barMotor: "#3D9B78",
     barCurrent: "#D96A42",
     barTrack: "#9AA6AC",
-    textShadow: "#14191D",
+    textShadow: "#f2f2f2",
   }),
 
   // Black + Lime — aggressive FPV racing / motorsport.
@@ -204,7 +204,7 @@ export const THEMES = {
     barMotor: "#78B82A",
     barCurrent: "#F08C1C",
     barTrack: "#A9B2AA",
-    textShadow: "#12160F",
+    textShadow: "#f2f2f2",
   }),
 };
 

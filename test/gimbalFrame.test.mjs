@@ -179,9 +179,9 @@ test("stick dots are #EE4266, radius 10 (twice the old 5)", () => {
 });
 
 test("gimbals sit inside the new 800px frame", () => {
-  assert.equal(GIMBAL_LAYOUT.left.x0, 192);
-  assert.equal(GIMBAL_LAYOUT.right.x0, 476);
-  assert.equal(GIMBAL_LAYOUT.left.x0 + GIMBAL_LAYOUT.size, 392);
+  assert.equal(GIMBAL_LAYOUT.left.x0, 198);
+  assert.equal(GIMBAL_LAYOUT.right.x0, 415);
+  assert.equal(GIMBAL_LAYOUT.left.x0 + GIMBAL_LAYOUT.size, 398);
 
   // Both gimbals fully inside, vertically centered.
   for (const layout of [GIMBAL_LAYOUT.left, GIMBAL_LAYOUT.right]) {
@@ -204,15 +204,16 @@ test("left flag column renders OFF states in the dim label color", () => {
 test("left column ARMED + MOTOR ON light up in theme colors", () => {
   const frame = paintStickFrame(CENTER_POSITION, FULL_STATE);
 
-  // "ARMED" at scale 2: the A's top bar lights y+0..1.
+  // "ARMED" at scale 3: the A's top bar lights y+0..2,
+  // starting at column 1 (x+3).
   const armedY = GIMBAL_LAYOUT.top + 12;
 
-  assert.deepEqual(colorAt(frame, 16 + 2, armedY + 0), [0x1b, 0x5e, 0x20, 255]);
+  assert.deepEqual(colorAt(frame, 16 + 4, armedY + 1), [0x1b, 0x5e, 0x20, 255]);
 });
 
 test("right column renders RPM, VBAT, AMP, MAX, ESC labels", () => {
   const frame = paintStickFrame(CENTER_POSITION, FULL_STATE);
-  const x = 700; // GIMBAL_LAYOUT.rightTextX
+  const x = 640; // GIMBAL_LAYOUT.rightTextX
   const top = GIMBAL_LAYOUT.top + 12; // 44
 
   // RPM label top row: R glyph "11110" lights the top bar.
@@ -220,10 +221,10 @@ test("right column renders RPM, VBAT, AMP, MAX, ESC labels", () => {
 
   // ESC value "63°C" renders in the amber escTemp color; the
   // '6' glyph's top bar lights 4px at the value start.
-  const escValueX = x + measureText("ESC", 1) + 4; // 721
-  const escValueY = top + 30 * 5 - 2; // 192
+  const escValueX = x + measureText("ESC", 2) + 4; // 668
+  const escValueY = top + 34 * 5 - 2; // 212
 
-  assert.deepEqual(colorAt(frame, escValueX + 4, escValueY), [0x7a, 0x5a, 0x00, 255]);
+  assert.deepEqual(colorAt(frame, escValueX + 6, escValueY), [0x7a, 0x5a, 0x00, 255]);
 });
 
 test("motor bar fills from the bottom with barMotor color", () => {

@@ -7,8 +7,8 @@ A **Rotorflight blackbox (`.bbl`) log tool** with a terminal reader and a local 
 - **Decode `.bbl` logs** — reads Betaflight-style binary blackbox files written by Rotorflight, including I/P frame decoding, slow/GPS/event frames, and corrupt-frame skipping.
 - **Flight summaries** — craft name, firmware, board, log start time, data version, duration, frame counts, and main-frame field names.
 - **JSON output** — machine-readable summary for scripting and automation.
-- **Stick-position video** — renders a green-screen-style 500×300 MP4 showing both gimbals (mode-2): left stick = yaw / collective, right stick = roll / pitch, plus armed and throttle toggle indicators.
-- **No image libraries** — every video frame is painted pixel-by-pixel into `Uint8Array` RGB24 buffers and piped straight into `ffmpeg` (H.264 `yuv420p` CRF 18, or ProRes 4444 `yuva444p10le` with alpha).
+- **Stick-position video** — renders a green-screen-style 800×262 overlay video showing both gimbals (mode-2): left stick = yaw / collective, right stick = roll / pitch, plus armed and throttle toggle indicators.
+- **No image libraries** — every video frame is painted pixel-by-pixel into `Uint8Array` RGBA buffers and piped straight into `ffmpeg` (H.264 `yuv420p` CRF 18, or ProRes 4444 `yuva444p10le` with alpha).
 - **GUI console** — a local web app for browsing logs, previewing real rendered frames, picking themes, and launching renders with live progress.
 
 ## Requirements
@@ -56,10 +56,12 @@ Options:
                     (default: <logname>-sticks.mp4; with --alpha,
                      <logname>-sticks.mov)
   --fps N           video frame rate (default 30)
-  --theme NAME      color theme for the video: default, gunmetal,
-                    charcoal, slate, lime (default: default)
+  --theme NAME      color theme for the video: default, light,
+                    gunmetal, charcoal, slate, lime (default: default)
   --alpha           transparent background - renders
                     alpha-capable ProRes 4444 QuickTime (.mov)
+  --shadow          draw the theme's drop shadow under text
+                    (default: off)
   --help            show this help
 ```
 
@@ -99,12 +101,12 @@ Render a video to a custom path at 60 fps:
 
 ```sh
 rotorflight-blackbox-video-overlay flight.bbl --video out/my-sticks.mp4 --fps 60
+```
 
 Render a transparent-background overlay (ProRes 4444 .mov):
 
 ```sh
 rotorflight-blackbox-video-overlay flight.bbl --alpha
-```
 ```
 
 Combine options — JSON summary of flight 2, then render its video:
@@ -129,7 +131,7 @@ Frame timing comes from the log's own `time` column, so any `--fps` plays back a
 
 ## Themes and transparency
 
-Five built-in themes ship with the command (`default`, `gunmetal`, `charcoal`, `slate`, `lime`). The GUI's color pickers can override every theme color individually.
+Six built-in themes ship with the command (`default`, `light`, `gunmetal`, `charcoal`, `slate`, `lime`). The GUI's color pickers can override every theme color individually.
 
 With `--alpha` (or the GUI's transparent-background toggle) the backdrop is not painted and the video is encoded as ProRes 4444 QuickTime (`yuva444p10le`) - video editors see a fully transparent background behind the overlay widgets, ready for compositing.
 

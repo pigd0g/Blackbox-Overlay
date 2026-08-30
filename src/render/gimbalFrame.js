@@ -67,8 +67,6 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-const OUT = [0, 0, 0, 0];
-
 export function pixelRect(frame, x0, y0, width, height, color, alpha = 255) {
   const xStart = clamp(x0, 0, WIDTH);
   const yStart = clamp(y0, 0, HEIGHT);

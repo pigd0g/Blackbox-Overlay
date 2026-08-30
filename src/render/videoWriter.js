@@ -49,6 +49,12 @@ export class VideoWriter {
       ? ["-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le", "-vendor", "apl0"]
       : ["-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p"];
 
+    // faststart's moov rewrite only helps web streaming;
+    // skipping it avoids a full-file rewrite of ProRes .mov.
+    const muxerArgs = this.alpha
+      ? []
+      : ["-movflags", "+faststart"];
+
     this.ffmpeg = spawn("ffmpeg", [
       "-y",
       "-loglevel", "error",
@@ -58,7 +64,7 @@ export class VideoWriter {
       "-r", String(fps),
       "-i", "pipe:0",
       ...encoderArgs,
-      "-movflags", "+faststart",
+      ...muxerArgs,
       outputPath
     ], {
       stdio: ["pipe", "ignore", "pipe"]

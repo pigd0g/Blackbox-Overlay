@@ -167,6 +167,11 @@ export async function renderStickVideo(flight, outputPath, options = {}) {
       })
     : null;
   const checker = previewWriter ? buildCheckerboard() : null;
+  // Reused for every preview frame so alpha renders don't
+  // allocate a fresh RGBA copy per frame.
+  const previewScratch = previewWriter
+    ? new Uint8Array(WIDTH * HEIGHT * 4)
+    : null;
 
   try {
     for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
@@ -187,11 +192,9 @@ export async function renderStickVideo(flight, outputPath, options = {}) {
       await writer.writeFrame(frame);
 
       if (previewWriter) {
+        previewScratch.set(frame);
         await previewWriter.writeFrame(
-          compositeOverCheckerboard(
-            Uint8Array.from(frame),
-            checker
-          )
+          compositeOverCheckerboard(previewScratch, checker)
         );
       }
 

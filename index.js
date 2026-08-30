@@ -284,6 +284,15 @@ async function main() {
   }
 }
 
+/**
+ * ProRes 4444 alpha output cannot be muxed into an .mp4
+ * container, so an explicit --video path is coerced to .mov
+ * when --alpha is set (same behavior as the GUI).
+ */
+function coerceAlphaPath(outputPath) {
+  return outputPath.replace(/\.[^.\\/]+$/, "") + ".mov";
+}
+
 async function renderVideos(selected, options) {
   if (!(await checkFfmpegAvailable())) {
     console.error(
@@ -294,10 +303,19 @@ async function renderVideos(selected, options) {
   }
 
   for (const flight of selected) {
-    const outputPath =
+    let outputPath =
       typeof options.video === "string"
         ? options.video
         : defaultVideoPath(options.file, options.alpha);
+
+    // ProRes 4444 must go into a .mov container.
+    if (options.alpha && !/\.mov$/i.test(outputPath)) {
+      const coerced = coerceAlphaPath(outputPath);
+      console.log(
+        `  --alpha requires a .mov container; writing to ${coerced} instead of ${outputPath}`
+      );
+      outputPath = coerced;
+    }
 
     console.log(
       `\nRendering sticks video for flight ${flight.index + 1}` +
@@ -323,6 +341,10 @@ async function renderVideos(selected, options) {
       `  Done: ${result.frames} frames at ${result.fps} fps ` +
         `(${result.durationSeconds.toFixed(1)} s of flight)`
     );
+
+    if (result.previewPath) {
+      console.log(`  Browser-playable preview: ${result.previewPath}`);
+    }
   }
 }
 

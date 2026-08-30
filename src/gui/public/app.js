@@ -214,10 +214,7 @@ const OVERRIDE_LABELS = {
   textShadow: "Text shadow"
 };
 
-let buildingColorGrid = false;
-
 function buildColorGrid() {
-  buildingColorGrid = true;
   els.colorGrid.innerHTML = "";
 
   const base = (state.themes && state.themes[state.theme]) || {};
@@ -244,8 +241,6 @@ function buildColorGrid() {
     row.append(swatch, name);
     els.colorGrid.appendChild(row);
   }
-
-  buildingColorGrid = false;
 }
 
 function normalizeHex(hex) {
@@ -395,7 +390,11 @@ async function paintSwatch(canvas, themeName) {
       flight: myFlight,
       t,
       theme: themeName,
-      alpha: false
+      alpha: false,
+      // Live color edits paint live swatches, but only for
+      // the theme card they actually apply to.
+      themeOverrides:
+        themeName === state.theme ? effectiveThemeOverrideList() : undefined
     },
     token
   );

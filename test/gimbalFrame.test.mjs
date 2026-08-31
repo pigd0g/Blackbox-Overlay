@@ -22,6 +22,12 @@ function colorAt(frame, x, y) {
   return [frame[offset], frame[offset + 1], frame[offset + 2], frame[offset + 3]];
 }
 
+// Bitmap-exact pixel assertions pin the legacy 5x7 font:
+// the overlay default switched to VT323 (fonts.js), and the
+// tests below check glyph-level geometry only the bitmap
+// font can guarantee.
+const BITMAP_FONT = { font: "bitmap" };
+
 const CENTER_POSITION = { left: { x: 0, y: 0 }, right: { x: 0, y: 0 } };
 
 const ALL_OFF = {
@@ -226,7 +232,7 @@ test("gimbals sit inside the new 800px frame", () => {
 });
 
 test("left flag column renders OFF states in the dim label color", () => {
-  const frame = paintStickFrame(CENTER_POSITION, ALL_OFF);
+  const frame = paintStickFrame(CENTER_POSITION, ALL_OFF, THEMES.default, BITMAP_FONT);
 
   // "DISARMED" at scale 2: the D's top bar lights y+0..1.
   const flagsY = GIMBAL_LAYOUT.top + 12;
@@ -235,7 +241,7 @@ test("left flag column renders OFF states in the dim label color", () => {
 });
 
 test("left column ARMED + MOTOR ON light up in theme colors", () => {
-  const frame = paintStickFrame(CENTER_POSITION, FULL_STATE);
+  const frame = paintStickFrame(CENTER_POSITION, FULL_STATE, THEMES.default, BITMAP_FONT);
 
   // "ARMED" at scale 3: the A's top bar lights y+0..2,
   // starting at column 1 (x+3).
@@ -245,7 +251,7 @@ test("left column ARMED + MOTOR ON light up in theme colors", () => {
 });
 
 test("right column renders RPM, VBAT, AMP, MAX, ESC labels", () => {
-  const frame = paintStickFrame(CENTER_POSITION, FULL_STATE);
+  const frame = paintStickFrame(CENTER_POSITION, FULL_STATE, THEMES.default, BITMAP_FONT);
   const x = 640; // GIMBAL_LAYOUT.rightTextX
   const top = GIMBAL_LAYOUT.top + 12; // 44
 
@@ -396,4 +402,88 @@ test("bitmap font basics", () => {
   assert.doesNotThrow(() => {
     pixelText(frame, WIDTH, HEIGHT, WIDTH - 2, HEIGHT - 2, "ARMED", [1, 2, 3], 2);
   });
+});
+
+// ------------------------------------------------------
+// Font-agnostic overlay behavior (default font = vt323)
+// ------------------------------------------------------
+
+test("default font is a registry id, not a path", async () => {
+  const { DEFAULT_FONT, resolveFont } = await import("../src/render/fonts.js");
+
+  assert.equal(DEFAULT_FONT, "vt323");
+  assert.equal(resolveFont(DEFAULT_FONT).source, "ttf");
+});
+
+test("default font paints readable ink in both text columns", () => {
+  const frame = paintStickFrame(CENTER_POSITION, FULL_STATE);
+  const countColumnInk = (xStart, xEnd) => {
+    let ink = 0;
+
+    for (let y = 0; y < HEIGHT; y += 1) {
+      for (let x = xStart; x < xEnd; x += 1) {
+        const offset = (y * WIDTH + x) * 4;
+
+        if (frame[offset + 3] === 255) {
+          const isBackdrop =
+            frame[offset] === 0xc6 &&
+            frame[offset + 1] === 0xd8 &&
+            frame[offset + 2] === 0xd3;
+          const isBox =
+            frame[offset] === 0x40 &&
+            frame[offset + 1] === 0x40 &&
+            frame[offset + 2] === 0x40;
+
+          if (!isBackdrop && !isBox) {
+            ink += 1;
+          }
+        }
+      }
+    }
+
+    return ink;
+  };
+
+  assert.ok(countColumnInk(14, 178) > 100, "left column has text ink");
+  assert.ok(countColumnInk(638, 798) > 300, "right column has text ink");
+});
+
+test("every text pixel stays inside the frame for the default font", () => {
+  const frame = paintStickFrame(CENTER_POSITION, FULL_STATE);
+
+  // The right text column must not spill into the last two
+  // pixel columns (width budget 640..797 for value + shadow).
+  for (let y = 0; y < HEIGHT; y += 1) {
+    const offset = (y * WIDTH + (WIDTH - 1)) * 4;
+    const isBackdrop =
+      frame[offset] === 0xc6 &&
+      frame[offset + 1] === 0xd8 &&
+      frame[offset + 2] === 0xd3;
+
+    assert.ok(
+      isBackdrop || frame[offset + 3] === 0,
+      `rightmost pixel at y=${y} is not background`
+    );
+  }
+});
+
+test("armed flag color appears with the default font", () => {
+  const frame = paintStickFrame(CENTER_POSITION, FULL_STATE);
+
+  // "ARMED" renders in theme.armed #1B5E20 — count exact
+  // matches; AA fringes are allowed to differ.
+  let armedPixels = 0;
+
+  for (let i = 0; i < frame.length; i += 4) {
+    if (
+      frame[i] === 0x1b &&
+      frame[i + 1] === 0x5e &&
+      frame[i + 2] === 0x20 &&
+      frame[i + 3] === 255
+    ) {
+      armedPixels += 1;
+    }
+  }
+
+  assert.ok(armedPixels > 30, `armed text ink = ${armedPixels}`);
 });

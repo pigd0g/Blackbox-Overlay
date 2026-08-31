@@ -470,6 +470,33 @@ html, body {
   background: var(--plate);
 }
 
+/* Font cards mirror theme cards, label set in the font itself */
+.font-stack { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.font-card {
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--plate);
+  padding: 10px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 86px;
+  min-height: 34px;
+}
+.font-name {
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.font-card[aria-checked="true"] {
+  border-color: var(--dot);
+  box-shadow: 0 0 0 1px var(--dot);
+  background: var(--plate);
+}
+
 .look-settings { gap: 6px; }
 .look-settings .fld { font-size: 12px; }
 .look-settings .out-hint { font-size: 10.5px; }

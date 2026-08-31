@@ -18,6 +18,7 @@ import { WIDTH, HEIGHT, paintStickFrame } from "./gimbalFrame.js";
 import { VideoWriter, checkFfmpegAvailable } from "./videoWriter.js";
 import { createFlightSampler } from "./frameSampler.js";
 import { resolveTheme, applyThemeOverrides } from "./themes.js";
+import { resolveFont } from "./fonts.js";
 
 export const DEFAULT_FPS = 30;
 
@@ -115,6 +116,9 @@ function buildCheckerboard() {
  * @param {string}  [options.theme] color theme name (themes.js)
  * @param {object}  [options.themeOverrides] per-key hex color
  *                  overrides applied over the theme
+ * @param {string}  [options.font]  overlay font id (fonts.js,
+ *                  default vt323); validated up front so a
+ *                  typo fails before any work
  * @param {boolean} [options.alpha] transparent background,
  *                  ProRes 4444 output (default false); when
  *                  on, a browser-playable
@@ -133,6 +137,7 @@ export async function renderStickVideo(flight, outputPath, options = {}) {
     resolveTheme(options.theme),
     options.themeOverrides
   );
+  const font = resolveFont(options.font); // early validation
 
   if (!Number.isFinite(fps) || fps <= 0) {
     throw new Error(`--fps must be a positive number, got ${fps}`);
@@ -186,7 +191,7 @@ export async function renderStickVideo(flight, outputPath, options = {}) {
           ...sampled.telemetry
         },
         theme,
-        { alpha, shadow: options.shadow === true }
+        { alpha, shadow: options.shadow === true, font: font.id }
       );
 
       await writer.writeFrame(frame);

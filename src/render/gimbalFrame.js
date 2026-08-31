@@ -29,7 +29,7 @@
 //
 // ======================================================
 
-import { pixelText, measureText } from "./bitmapFont.js";
+import { createOverlayTextRenderer } from "./textRenderer.js";
 import { THEMES } from "./themes.js";
 
 export const WIDTH = 800;
@@ -320,21 +320,35 @@ export function paintVerticalBar(
 }
 
 // Paint rules for the telemetry text columns. The x origins
-// come from GIMBAL_LAYOUT (leftTextX / rightTextX). The 4px
+// come from GIMBAL_LAYOUT (leftTextX / rightTextX). Text is
+// drawn through the overlay text renderer (fonts.js) — roles
+// carry the sizing, the selected font answers. The 4px
 // label→value gap keeps "VBAT 22.20V" inside the 155px right
-// text column. Every glyph draws with a hard drop shadow
-// (theme.textShadow, offset +scale px diagonally) — pass a
-// theme without textShadow to skip it.
-const LINE_STRIDE = 34; // value glyphs are 21px tall at scale 3
+// text column. Every line draws with a theme.textShadow drop
+// shadow when the shadow option is on; pass a theme without
+// textShadow (or shadow off) to skip it.
+const DEFAULT_FONT_ID = "vt323";
 const BAR_WIDTH = 13;
-const LABEL_SCALE = 2;
-const VALUE_SCALE = 3;
 const LABEL_GAP = 4;
 
 /**
- * Shadow color for active text: the theme's textShadow when
- * the shadow option is on, null when off (default). Passing
- * null to pixelText skips the shadow pass entirely.
+ * Text renderer for a font id, memoized so per-frame paint
+ * calls do not rebuild glyph caches. The underlying glyph
+// cache is process-wide and bounded.
+ */
+const rendererCache = new Map();
+
+function overlayRenderer(fontId) {
+  if (!rendererCache.has(fontId)) {
+    rendererCache.set(fontId, createOverlayTextRenderer(fontId));
+  }
+
+  return rendererCache.get(fontId);
+}
+
+/**
+ * Drop-shadow color for active text: the theme's textShadow
+ * when the shadow option is on, null when off (default).
  */
 function shadowFor(theme, enabled) {
   return enabled === true ? (theme.textShadow ?? [0, 0, 0]) : null;
@@ -348,10 +362,13 @@ function labelLine(
   valueText,
   labelColor,
   valueColor,
-  theme,
-  shadow,
+  renderer,
+  shadow
 ) {
-  pixelText(
+  const labelRole = renderer.roles.label;
+  const valueRole = renderer.roles.value;
+
+  renderer.drawText(
     frame,
     WIDTH,
     HEIGHT,
@@ -359,15 +376,16 @@ function labelLine(
     y,
     labelText,
     labelColor,
-    LABEL_SCALE,
-    shadow,
+    labelRole,
+    { shadowColor: shadow }
   );
 
   if (valueText !== null) {
     const valueX =
-      x + Math.ceil(measureText(labelText, LABEL_SCALE)) + LABEL_GAP;
+      x + Math.ceil(renderer.measureText(labelText, labelRole)) +
+      LABEL_GAP;
 
-    pixelText(
+    renderer.drawText(
       frame,
       WIDTH,
       HEIGHT,
@@ -375,8 +393,8 @@ function labelLine(
       y - 2,
       valueText,
       valueColor,
-      VALUE_SCALE,
-      shadow,
+      valueRole,
+      { shadowColor: shadow }
     );
   }
 }
@@ -386,8 +404,8 @@ function labelLine(
  * on-color when set (e.g. "ARMED") and the muted
  * labelOff color when not (e.g. "DISARMED", "MOTOR OFF").
  */
-function paintFlag(frame, x, y, onText, offText, on, onColor, theme, shadow) {
-  pixelText(
+function paintFlag(frame, x, y, onText, offText, on, onColor, theme, renderer, shadow) {
+  renderer.drawText(
     frame,
     WIDTH,
     HEIGHT,
@@ -395,8 +413,8 @@ function paintFlag(frame, x, y, onText, offText, on, onColor, theme, shadow) {
     y,
     on ? onText : offText,
     on ? onColor : theme.labelOff,
-    VALUE_SCALE,
-    shadow,
+    renderer.roles.value,
+    { shadowColor: shadow }
   );
 }
 
@@ -406,7 +424,7 @@ function paintFlag(frame, x, y, onText, offText, on, onColor, theme, shadow) {
  * the MOTOR_ON/OFF flag above already names it, so no
  * "MOTOR" label is drawn.
  */
-function paintLeftColumn(frame, y0, state, theme, shadow) {
+function paintLeftColumn(frame, y0, state, theme, renderer, shadow) {
   paintFlag(
     frame,
     GIMBAL_LAYOUT.leftTextX,
@@ -416,18 +434,20 @@ function paintLeftColumn(frame, y0, state, theme, shadow) {
     state.armed === true,
     theme.armed,
     theme,
+    renderer,
     shadow,
   );
 
   paintFlag(
     frame,
     GIMBAL_LAYOUT.leftTextX,
-    y0 + LINE_STRIDE,
+    y0 + lineStride(renderer),
     "MOTOR ON",
     "MOTOR OFF",
     state.motorOn === true,
     theme.motor,
     theme,
+    renderer,
     shadow,
   );
 
@@ -436,16 +456,16 @@ function paintLeftColumn(frame, y0, state, theme, shadow) {
       ? "--"
       : `${Number(state.motorPct).toFixed(1)}%`;
 
-  pixelText(
+  renderer.drawText(
     frame,
     WIDTH,
     HEIGHT,
     GIMBAL_LAYOUT.leftTextX,
-    y0 + LINE_STRIDE * 2 - 2,
+    y0 + lineStride(renderer) * 2 - 2,
     motorPctText,
     theme.motor,
-    VALUE_SCALE,
-    shadow,
+    renderer.roles.value,
+    { shadowColor: shadow },
   );
 }
 
@@ -453,7 +473,7 @@ function paintLeftColumn(frame, y0, state, theme, shadow) {
  * Right column: RPM, Volts-per-cell, Battery volts,
  * Current, Max Current, ESC temp.
  */
-function paintRightColumn(frame, y0, state, theme, shadow) {
+function paintRightColumn(frame, y0, state, theme, renderer, shadow) {
   const rpmText =
     state.rpm === null || state.rpm === undefined
       ? "--"
@@ -487,62 +507,62 @@ function paintRightColumn(frame, y0, state, theme, shadow) {
     rpmText,
     theme.labelOff,
     theme.rpm,
-    theme,
+    renderer,
     shadow,
   );
   labelLine(
     frame,
     GIMBAL_LAYOUT.rightTextX,
-    y0 + LINE_STRIDE,
+    y0 + lineStride(renderer),
     "V/C",
     perCellText,
     theme.labelOff,
     theme.vCell,
-    theme,
+    renderer,
     shadow,
   );
   labelLine(
     frame,
     GIMBAL_LAYOUT.rightTextX,
-    y0 + LINE_STRIDE * 2,
+    y0 + lineStride(renderer) * 2,
     "VBAT",
     packText,
     theme.labelOff,
     theme.vCell,
-    theme,
+    renderer,
     shadow,
   );
   labelLine(
     frame,
     GIMBAL_LAYOUT.rightTextX,
-    y0 + LINE_STRIDE * 3,
+    y0 + lineStride(renderer) * 3,
     "AMP",
     currentText,
     theme.labelOff,
     theme.current,
-    theme,
+    renderer,
     shadow,
   );
   labelLine(
     frame,
     GIMBAL_LAYOUT.rightTextX,
-    y0 + LINE_STRIDE * 4,
+    y0 + lineStride(renderer) * 4,
     "MAX",
     maxCurrentText,
     theme.labelOff,
     theme.maxCurrent,
-    theme,
+    renderer,
     shadow,
   );
   labelLine(
     frame,
     GIMBAL_LAYOUT.rightTextX,
-    y0 + LINE_STRIDE * 5,
+    y0 + lineStride(renderer) * 5,
     "ESC",
     escText,
     theme.labelOff,
     theme.escTemp,
-    theme,
+    renderer,
     shadow,
   );
 }
@@ -596,6 +616,7 @@ function paintRightBar(frame, state, theme) {
  * Options.alpha: leave the background transparent.
  * Options.shadow: draw the theme's textShadow under every
  * glyph (default OFF — opt-in per frame).
+ * Options.font: registry font id (fonts.js); default vt323.
  */
 export function paintStickFrame(
   positions,
@@ -635,6 +656,8 @@ export function paintStickFrame(
   };
   const alphaBackground = options.alpha === true;
   const shadow = shadowFor(theme, options.shadow === true);
+  const renderer = overlayRenderer(options.font ?? DEFAULT_FONT_ID);
+  const stride = lineStride(renderer);
 
   const frame = new Uint8Array(WIDTH * HEIGHT * 4).fill(0);
 
@@ -655,15 +678,27 @@ export function paintStickFrame(
     theme,
   );
 
-  // Value glyphs are 21px tall at scale 3; the column starts
-  // a third of the way down so seven lines stay inside 262px.
+  // The column starts a third of the way down so all six
+  // right-column lines stay inside 262px for every font.
   const columnTop = GIMBAL_LAYOUT.top + 12;
 
-  paintLeftColumn(frame, columnTop, fullState, theme, shadow);
+  paintLeftColumn(frame, columnTop, fullState, theme, renderer, shadow);
   paintLeftBar(frame, fullState, theme);
 
-  paintRightColumn(frame, columnTop, fullState, theme, shadow);
+  paintRightColumn(frame, columnTop, fullState, theme, renderer, shadow);
   paintRightBar(frame, fullState, theme);
 
   return frame;
+}
+
+/**
+ * Vertical distance between text baselines: derived from the
+ * value role's ink height so each font's line stack scales
+ * with its glyphs (bitmap keeps the historical 34px = 21px
+ * glyph + 13px air).
+ */
+function lineStride(renderer) {
+  const inkHeight = renderer.roleInkHeight("value");
+
+  return Math.max(24, Math.round(inkHeight * 1.62));
 }

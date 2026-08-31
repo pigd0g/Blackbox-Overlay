@@ -23,6 +23,7 @@ import { decodeBblFile, looksLikeBinaryBbl } from "../bbl/bblDecoder.js";
 import { summarizeFlight } from "../summarize.js";
 import { createFlightSampler } from "../render/frameSampler.js";
 import { THEMES, THEME_NAMES, THEME_KEYS, THEME_HEX, resolveTheme, applyThemeOverrides } from "../render/themes.js";
+import { fontCatalog, resolveFont } from "../render/fonts.js";
 import {
   WIDTH as FRAME_WIDTH,
   HEIGHT as FRAME_HEIGHT,
@@ -223,6 +224,7 @@ export function renderPreviewFrame({
   t,
   theme,
   themeOverrides,
+  font,
   alpha,
   shadow
 }) {
@@ -259,7 +261,7 @@ export function renderPreviewFrame({
       ...sampled.telemetry
     },
     themeObj,
-    { alpha: alphaOn, shadow: shadow === true }
+    { alpha: alphaOn, shadow: shadow === true, font: resolveFont(font).id }
   );
 
   return { width: FRAME_WIDTH, height: FRAME_HEIGHT, pixels: rgba };
@@ -326,6 +328,7 @@ function jobSnapshot(job) {
     fps: job.fps,
     theme: job.theme,
     themeOverrides: job.themeOverrides,
+    font: job.font,
     alpha: job.alpha,
     shadow: job.shadow,
     output: job.output,
@@ -361,7 +364,7 @@ function broadcast(job, event) {
  * { jobId, job: snapshot }; throws with `.code = "busy"`
  * when a render is already running.
  */
-export function startRenderJob({ file, filePath, flight, fps, theme, themeOverrides, alpha, shadow, output }) {
+export function startRenderJob({ file, filePath, flight, fps, theme, themeOverrides, font, alpha, shadow, output }) {
   if (activeJob && !activeJob.settled) {
     const error = new Error("A render is already in progress.");
     error.code = "busy";
@@ -388,6 +391,7 @@ export function startRenderJob({ file, filePath, flight, fps, theme, themeOverri
       themeOverrides && typeof themeOverrides === "object"
         ? themeOverrides
         : null,
+    font: resolveFont(font).id,
     alpha: alpha === true,
     shadow: shadow === true,
     output: resolve(String(output)),
@@ -405,6 +409,7 @@ export function startRenderJob({ file, filePath, flight, fps, theme, themeOverri
     fps: job.fps,
     theme: job.theme,
     themeOverrides: job.themeOverrides ?? undefined,
+    font: job.font,
     alpha: job.alpha,
     shadow: job.shadow,
     onProgress: (message) => {
@@ -510,6 +515,11 @@ export function subscribeJob(id, listener) {
 
 export function themeCatalog() {
   return { names: [...THEME_NAMES], keys: [...THEME_KEYS], themes: THEME_HEX };
+}
+
+/** Font registry surface for the GUI's font cards. */
+export function fontsCatalog() {
+  return fontCatalog();
 }
 
 export async function ffmpegAvailable() {

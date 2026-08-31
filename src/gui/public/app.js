@@ -34,6 +34,7 @@ const els = {
   tValue: $("t-value"),
   frameValue: $("frame-value"),
   themeStack: $("theme-stack"),
+  fontStack: $("font-stack"),
   alphaToggle: $("alpha-toggle"),
   alphaHint: $("alpha-hint"),
   shadowToggle: $("shadow-toggle"),
@@ -69,6 +70,8 @@ const state = {
   themes: null,
   themeKeys: [],
   themeOverrides: {},
+  font: "vt323",
+  fonts: null,
   alpha: false,
   shadow: false,
   playing: false,
@@ -320,6 +323,17 @@ async function boot() {
     applyAccent(state.theme);
     markThemeSelection(state.theme);
 
+    // Fonts: card stack + @font-face previews.
+    if (serverState.fonts) {
+      state.fonts = serverState.fonts;
+      state.font = serverState.fonts.default || "vt323";
+      loadFontFaces(serverState.fonts);
+      for (const id of serverState.fonts.ids) {
+        addFontCard(id, serverState.fonts.fonts[id]);
+      }
+      markFontSelection(state.font);
+    }
+
     els.ffmpegPill.dataset.state = serverState.ffmpeg ? "ok" : "missing";
     els.ffmpegPill.textContent = serverState.ffmpeg
       ? "FFMPEG OK"
@@ -454,6 +468,70 @@ async function selectTheme(name) {
 }
 
 // ------------------------------------------------------
+// Font cards + @font-face previews
+// ------------------------------------------------------
+
+/**
+ * Register every bundled weight-400 file so card labels
+ * render in their own typeface (the monitor previews come
+ * from the server's real renderer).
+ */
+function loadFontFaces(catalog) {
+  for (const [id, def] of Object.entries(catalog.fonts)) {
+    const file = def.weights["400"] ?? Object.values(def.weights)[0];
+
+    if (!file || def.source === "bitmap") continue;
+
+    const family = `overlay-${id}`;
+    const face = new FontFace(family, `url(/${file})`);
+
+    face.load().then((loaded) => {
+      document.fonts.add(loaded);
+      for (const card of els.fontStack.children) {
+        if (card.dataset.font === id) {
+          card.querySelector(".font-name").style.fontFamily = `'${family}', monospace`;
+        }
+      }
+    }).catch(() => {
+      // Card falls back to the console font; not fatal.
+    });
+  }
+}
+
+function addFontCard(id, def) {
+  const card = document.createElement("button");
+  card.type = "button";
+  card.className = "font-card";
+  card.setAttribute("role", "radio");
+  card.setAttribute("aria-checked", "false");
+  card.dataset.font = id;
+
+  const name = document.createElement("span");
+  name.className = "font-name";
+  name.textContent = def ? def.name : id.toUpperCase();
+  card.appendChild(name);
+
+  card.addEventListener("click", () => selectFont(id));
+
+  els.fontStack.appendChild(card);
+}
+
+function markFontSelection(id) {
+  for (const card of els.fontStack.children) {
+    card.setAttribute(
+      "aria-checked",
+      String(card.dataset.font === id)
+    );
+  }
+}
+
+async function selectFont(id) {
+  state.font = id;
+  markFontSelection(id);
+  await requestPreview();
+}
+
+// ------------------------------------------------------
 // Preview frames
 // ------------------------------------------------------
 //
@@ -511,6 +589,7 @@ function previewCurrent() {
     t: state.t,
     theme: state.theme,
     themeOverrides: effectiveThemeOverrideList(),
+    font: state.font,
     alpha: state.alpha,
     shadow: state.shadow
   };
@@ -523,6 +602,7 @@ function sameSubject(a, b) {
     a.alpha === b.alpha &&
     a.shadow === b.shadow &&
     a.theme === b.theme &&
+    a.font === b.font &&
     JSON.stringify(a.themeOverrides || {}) ===
       JSON.stringify(b.themeOverrides || {})
   );
@@ -1143,6 +1223,7 @@ els.renderBtn.addEventListener("click", async () => {
       fps: state.fps,
       theme: state.theme,
       themeOverrides: effectiveThemeOverrideList(),
+      font: state.font,
       alpha: state.alpha,
       shadow: state.shadow,
       output: els.outputInput.value.trim()

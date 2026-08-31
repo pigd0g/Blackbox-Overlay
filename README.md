@@ -9,7 +9,8 @@ A **Rotorflight blackbox (`.bbl`) log tool** with a terminal reader and a local 
 - **JSON output** — machine-readable summary for scripting and automation.
 - **Stick-position video** — renders a green-screen-style 800×262 overlay video showing both gimbals (mode-2): left stick = yaw / collective, right stick = roll / pitch, plus armed and throttle toggle indicators.
 - **No image libraries** — every video frame is painted pixel-by-pixel into `Uint8Array` RGBA buffers and piped straight into `ffmpeg` (H.264 `yuv420p` CRF 18, or ProRes 4444 `yuva444p10le` with alpha).
-- **GUI console** — a local web app for browsing logs, previewing real rendered frames, picking themes, and launching renders with live progress.
+- **Selectable text font** — the overlay paints its telemetry through a from-scratch TrueType engine (no dependencies): VT323 (default), Geist, Orbitron, Audiowide, Space Mono, Zen Dots, or the classic 5×7 bitmap.
+- **GUI console** — a local web app for browsing logs, previewing real rendered frames, picking themes and fonts, and launching renders with live progress.
 
 ## Requirements
 
@@ -41,6 +42,7 @@ This starts a local server (bound to `127.0.0.1` only) and opens the console in 
 - **Flight list** — per-flight craft, firmware, duration, frame counts, and the main-field name list.
 - **Live monitor** — the preview canvas paints real frames from the same pipeline that renders the video; scrub through the flight over its collective trace, press Space to play, arrow keys to step frames.
 - **Theme swatches** — each theme's swatch is a live mini-frame from your own flight; the console's accent color follows the selected theme's stick-dot color.
+- **Font picker** — font cards beside the theme strip, each previewed in its own typeface.
 - **Render** — choose fps and output name (defaults to `out/<logname>-flight<N>-sticks.mp4`), watch progress, and play the finished MP4 inline.
 
 ## CLI usage
@@ -58,6 +60,9 @@ Options:
   --fps N           video frame rate (default 30)
   --theme NAME      color theme for the video: default, light,
                     gunmetal, charcoal, slate, lime (default: default)
+  --font NAME       overlay text font: vt323, bitmap, geist,
+                    orbitron, audiowide, spacemono, zendots
+                    (default: vt323)
   --alpha           transparent background - renders
                     alpha-capable ProRes 4444 QuickTime (.mov)
   --shadow          draw the theme's drop shadow under text
@@ -103,6 +108,12 @@ Render a video to a custom path at 60 fps:
 rotorflight-blackbox-video-overlay flight.bbl --video out/my-sticks.mp4 --fps 60
 ```
 
+Render with a different overlay font:
+
+```sh
+rotorflight-blackbox-video-overlay flight.bbl --video --font orbitron
+```
+
 Render a transparent-background overlay (ProRes 4444 .mov):
 
 ```sh
@@ -133,6 +144,22 @@ Frame timing comes from the log's own `time` column, so any `--fps` plays back a
 
 Six built-in themes ship with the command (`default`, `light`, `gunmetal`, `charcoal`, `slate`, `lime`). The GUI's color pickers can override every theme color individually.
 
+## Fonts
+
+Seven overlay fonts ship in `fonts/` (all OFL-licensed, licenses included):
+
+| Font | Look |
+|---|---|
+| `vt323` (default) | Retro CRT terminal |
+| `bitmap` | The original 5×7 pixel font |
+| `geist` | Clean / professional (static weights 100–900) |
+| `orbitron` | Futuristic FPV / HUD |
+| `audiowide` | Aggressive / sporty |
+| `spacemono` | Technical instrumentation |
+| `zendots` | Futuristic / experimental |
+
+Weights resolve to the bundled static instances (nearest weight wins); text is rasterized by an in-repo TrueType engine (`src/render/fontEngine.js` + `fontRaster.js`) — no font libraries are used.
+
 With `--alpha` (or the GUI's transparent-background toggle) the backdrop is not painted and the video is encoded as ProRes 4444 QuickTime (`yuva444p10le`) - video editors see a fully transparent background behind the overlay widgets, ready for compositing.
 
 ## Project layout
@@ -146,8 +173,13 @@ src/bbl/                    .bbl decoding (byte stream, header, frames)
 src/render/gimbalFrame.js   pixel painter for stick frames
 src/render/stickMapping.js  rcCommand → gimbal position mapping
 src/render/frameSampler.js  shared time-sampling of flights
+src/render/fonts.js         font registry (ids, weights, metrics)
+src/render/fontEngine.js    minimal TrueType outline parser
+src/render/fontRaster.js    glyph rasterizer + cache
+src/render/textRenderer.js  text draw facade (ttf + bitmap)
 src/render/videoRender.js   render orchestration
 src/render/videoWriter.js   ffmpeg raw-RGBA pipe writer (H.264 / ProRes 4444)
+fonts/                      bundled OFL typefaces used by the overlay
 test/                       node --test suites + sample .bbl fixture
 ```
 

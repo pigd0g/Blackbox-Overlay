@@ -134,6 +134,84 @@ test("state reports themes and ffmpeg availability", async () => {
   assert.match(payload.themes.themes.light.dot, /^#[0-9a-f]{6}$/i);
 });
 
+test("state carries the font catalog with vt323 default", async () => {
+  if (!hasFixture) return;
+
+  const { existsSync } = await import("node:fs");
+  const fontsDir = join(import.meta.dirname, "..", "fonts");
+
+  if (!existsSync(join(fontsDir, "VT323", "VT323-Regular.ttf"))) {
+    return; // fonts pruned; catalog shape is covered by unit tests
+  }
+
+  const payload = await (await fetch(`${base}/api/state`)).json();
+
+  assert.ok(Array.isArray(payload.fonts.ids));
+  assert.ok(payload.fonts.ids.includes("vt323"));
+  assert.ok(payload.fonts.ids.includes("bitmap"));
+  assert.equal(payload.fonts.default, "vt323");
+  assert.equal(payload.fonts.fonts.vt323.name, "VT323");
+  assert.match(payload.fonts.fonts.vt323.weights["400"], /^fonts\//);
+});
+
+test("font files are served with the right media type", async () => {
+  if (!hasFixture) return;
+
+  const { existsSync } = await import("node:fs");
+  const fontPath = join(import.meta.dirname, "..", "fonts", "VT323", "VT323-Regular.ttf");
+
+  if (!existsSync(fontPath)) {
+    return;
+  }
+
+  const response = await fetch(`${base}/fonts/VT323/VT323-Regular.ttf`);
+
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type"), /font\/ttf/);
+  assert.ok((await response.arrayBuffer()).byteLength > 10_000);
+});
+
+test("font file routes refuse path escapes", async () => {
+  if (!hasFixture) return;
+
+  const response = await fetch(`${base}/fonts/..%2f..%2fpackage.json`);
+
+  assert.equal(response.status, 403);
+});
+
+test("preview honors the font option", async () => {
+  if (!hasFixture) return;
+
+  const { existsSync } = await import("node:fs");
+
+  if (!existsSync(join(import.meta.dirname, "..", "fonts"))) {
+    return;
+  }
+
+  const probe = async (font) => {
+    const response = await fetch(`${base}/api/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file: FIXTURE,
+        flight: 1,
+        t: 1.5,
+        theme: "default",
+        ...(font ? { font } : {})
+      })
+    });
+
+    assert.equal(response.status, 200);
+
+    return Buffer.from(await response.arrayBuffer());
+  };
+
+  const vt323 = await probe("vt323");
+  const geist = await probe("geist");
+
+  assert.notDeepEqual(vt323, geist, "fonts must paint different frames");
+});
+
 test("browse lists directories and .bbl files", async () => {
   if (!hasFixture) return;
 

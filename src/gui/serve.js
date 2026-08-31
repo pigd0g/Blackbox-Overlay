@@ -28,6 +28,7 @@ import {
   currentJob,
   subscribeJob,
   themeCatalog,
+  fontsCatalog,
   ffmpegAvailable,
   resolveOutputPath,
   isCompletedOutput,
@@ -39,6 +40,10 @@ const PUBLIC_DIR = join(
   "public"
 );
 
+// Bundled typefaces for the console's @font-face previews —
+// registry paths, whitelisted to the repo's fonts/ directory.
+const FONTS_DIR = join(PUBLIC_DIR, "..", "..", "..", "fonts");
+
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -46,7 +51,8 @@ const MIME = {
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".ico": "image/x-icon",
-  ".mp4": "video/mp4"
+  ".mp4": "video/mp4",
+  ".ttf": "font/ttf"
 };
 
 // ------------------------------------------------------
@@ -147,6 +153,45 @@ function serveStatic(req, res, pathname) {
   createReadStream(target).pipe(res);
 }
 
+function serveFontFile(req, res, pathname) {
+  const relative = pathname.slice("/fonts/".length);
+  const target = normalize(join(FONTS_DIR, relative));
+
+  const isInside =
+    (target === FONTS_DIR || target.startsWith(FONTS_DIR + sep)) &&
+    !relative.includes("%2e") &&
+    !relative.includes("%2f") &&
+    !relative.includes("%5c") &&
+    !relative.includes("\\") &&
+    !relative.includes("..");
+
+  if (!isInside) {
+    sendError(res, 403, "Forbidden");
+    return;
+  }
+
+  let stats;
+
+  try {
+    stats = statSync(target);
+
+    if (stats.isDirectory()) {
+      sendError(res, 403, "Forbidden");
+      return;
+    }
+  } catch {
+    sendError(res, 404, "Not found");
+    return;
+  }
+
+  res.writeHead(200, {
+    "Content-Type": MIME[extname(target).toLowerCase()] ?? "application/octet-stream",
+    "Content-Length": stats.size,
+    "Cache-Control": "no-store"
+  });
+  createReadStream(target).pipe(res);
+}
+
 // ------------------------------------------------------
 // SSE
 // ------------------------------------------------------
@@ -194,6 +239,7 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, {
       ffmpeg: ffmpeg,
       themes: themeCatalog(),
+      fonts: fontsCatalog(),
       activeJob: currentJob(),
       home: tempDir()
     });
@@ -302,8 +348,14 @@ async function handleApi(req, res, url) {
 
     const sourceFile = body.path ?? body.file;
     // Renders always land in <cwd>/out/ — a bare name keeps
-    // its stem, anything path-like is flattened.
-    const output = resolveOutputPath(body.output, sourceFile, body.flight);
+    // its stem, anything path-like is flattened. Alpha
+    // renders (transparent background) encode ProRes 4444.
+    const output = resolveOutputPath(
+      body.output,
+      sourceFile,
+      body.flight,
+      body.alpha === true
+    );
 
     try {
       const started = startRenderJob({
@@ -311,6 +363,10 @@ async function handleApi(req, res, url) {
         flight: body.flight,
         fps: body.fps,
         theme: body.theme,
+        themeOverrides: body.themeOverrides,
+        font: body.font,
+        alpha: body.alpha,
+        shadow: body.shadow,
         output
       });
 
@@ -412,9 +468,12 @@ async function main() {
   const server = createServer((req, res) => {
     const url = new URL(req.url, `http://${req.headers.host ?? "localhost"}`);
 
-    Promise.resolve(url.pathname.startsWith("/api/")
+    Promise.resolve(
+      url.pathname.startsWith("/api/")
         ? handleApi(req, res, url)
-        : serveStatic(req, res, url.pathname)
+        : url.pathname.startsWith("/fonts/")
+          ? serveFontFile(req, res, url.pathname)
+          : serveStatic(req, res, url.pathname)
     ).catch((error) => {
       if (!res.headersSent) {
         sendError(res, 500, error.message);

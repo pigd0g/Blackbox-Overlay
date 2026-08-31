@@ -22,7 +22,8 @@ import { homedir, tmpdir } from "node:os";
 import { decodeBblFile, looksLikeBinaryBbl } from "../bbl/bblDecoder.js";
 import { summarizeFlight } from "../summarize.js";
 import { createFlightSampler } from "../render/frameSampler.js";
-import { THEMES, THEME_NAMES, THEME_HEX, resolveTheme } from "../render/themes.js";
+import { THEMES, THEME_NAMES, THEME_KEYS, THEME_HEX, resolveTheme, applyThemeOverrides } from "../render/themes.js";
+import { fontCatalog, resolveFont } from "../render/fonts.js";
 import {
   WIDTH as FRAME_WIDTH,
   HEIGHT as FRAME_HEIGHT,
@@ -30,6 +31,7 @@ import {
 } from "../render/gimbalFrame.js";
 import {
   renderStickVideo,
+  previewPathFor,
   checkFfmpegAvailable
 } from "../render/videoRender.js";
 
@@ -210,10 +212,22 @@ export function describeLog(filePath) {
 // ------------------------------------------------------
 
 /**
- * One painted 500x300 frame, converted to RGBA for direct
- * canvas putImageData. Returns { width, height, pixels }.
+ * One painted 800x262 RGBA frame for direct canvas
+ * putImageData. Theme overrides re-ink individual keys;
+ * alpha keeps the background transparent. Returns
+ * { width, height, pixels }.
  */
-export function renderPreviewFrame({ file, filePath, flight, t, theme }) {
+export function renderPreviewFrame({
+  file,
+  filePath,
+  flight,
+  t,
+  theme,
+  themeOverrides,
+  font,
+  alpha,
+  shadow
+}) {
   const log = loadLog(file ?? filePath);
   const flightObj = findFlight(log, flight);
 
@@ -233,27 +247,22 @@ export function renderPreviewFrame({ file, filePath, flight, t, theme }) {
   );
 
   const sampled = sampler.frameAt(clamped);
-  const themeObj = resolveTheme(theme);
+  const themeObj = applyThemeOverrides(
+    resolveTheme(theme),
+    themeOverrides
+  );
+  const alphaOn = alpha === true;
 
-  const rgb = paintStickFrame(
+  const rgba = paintStickFrame(
     sampled.positions,
     {
-      throttle: sampled.toggles.throttle,
-      perCell: sampled.telemetry.perCell,
-      cellCount: sampled.telemetry.cellCount,
-      rpm: sampled.telemetry.rpm
+      armed: sampled.toggles.armed,
+      motorOn: sampled.toggles.motorOn,
+      ...sampled.telemetry
     },
-    themeObj
+    themeObj,
+    { alpha: alphaOn, shadow: shadow === true, font: resolveFont(font).id }
   );
-
-  const rgba = Buffer.alloc((rgb.length / 3) * 4);
-
-  for (let i = 0, j = 0; i < rgb.length; i += 3, j += 4) {
-    rgba[j] = rgb[i];
-    rgba[j + 1] = rgb[i + 1];
-    rgba[j + 2] = rgb[i + 2];
-    rgba[j + 3] = 255;
-  }
 
   return { width: FRAME_WIDTH, height: FRAME_HEIGHT, pixels: rgba };
 }
@@ -318,7 +327,12 @@ function jobSnapshot(job) {
     flight: job.flight,
     fps: job.fps,
     theme: job.theme,
+    themeOverrides: job.themeOverrides,
+    font: job.font,
+    alpha: job.alpha,
+    shadow: job.shadow,
     output: job.output,
+    previewPath: job.previewPath,
     frames: job.frames,
     totalFrames: job.totalFrames,
     message: job.message
@@ -350,7 +364,7 @@ function broadcast(job, event) {
  * { jobId, job: snapshot }; throws with `.code = "busy"`
  * when a render is already running.
  */
-export function startRenderJob({ file, filePath, flight, fps, theme, output }) {
+export function startRenderJob({ file, filePath, flight, fps, theme, themeOverrides, font, alpha, shadow, output }) {
   if (activeJob && !activeJob.settled) {
     const error = new Error("A render is already in progress.");
     error.code = "busy";
@@ -373,7 +387,15 @@ export function startRenderJob({ file, filePath, flight, fps, theme, output }) {
     flight: Number(flight),
     fps: Number(fps) || 30,
     theme: String(theme || "default"),
+    themeOverrides:
+      themeOverrides && typeof themeOverrides === "object"
+        ? themeOverrides
+        : null,
+    font: resolveFont(font).id,
+    alpha: alpha === true,
+    shadow: shadow === true,
     output: resolve(String(output)),
+    previewPath: null,
     frames: 0,
     totalFrames: null,
     message: "starting ffmpeg…",
@@ -386,6 +408,10 @@ export function startRenderJob({ file, filePath, flight, fps, theme, output }) {
   const options = {
     fps: job.fps,
     theme: job.theme,
+    themeOverrides: job.themeOverrides ?? undefined,
+    font: job.font,
+    alpha: job.alpha,
+    shadow: job.shadow,
     onProgress: (message) => {
       job.message = message;
 
@@ -408,6 +434,12 @@ export function startRenderJob({ file, filePath, flight, fps, theme, output }) {
       job.totalFrames = result.frames;
       job.durationSeconds = result.durationSeconds;
       job.message = `done: ${result.frames} frames`;
+
+      if (result.previewPath) {
+        job.previewPath = resolve(result.previewPath);
+        completedOutputs.add(job.previewPath);
+      }
+
       completedOutputs.add(resolve(job.output));
       lastFinishedJob = job;
       broadcast(job, { type: "done", job: jobSnapshot(job) });
@@ -482,7 +514,12 @@ export function subscribeJob(id, listener) {
 // ------------------------------------------------------
 
 export function themeCatalog() {
-  return { names: [...THEME_NAMES], themes: THEME_HEX };
+  return { names: [...THEME_NAMES], keys: [...THEME_KEYS], themes: THEME_HEX };
+}
+
+/** Font registry surface for the GUI's font cards. */
+export function fontsCatalog() {
+  return fontCatalog();
 }
 
 export async function ffmpegAvailable() {
@@ -491,15 +528,18 @@ export async function ffmpegAvailable() {
 
 /**
  * Default GUI render destination: <cwd>/out/<logbase>-flight<N>-sticks.mp4
+ * (or .mov for alpha renders).
  */
-export function suggestOutputPath(filePath, flight) {
+export function suggestOutputPath(filePath, flight, alpha = false) {
   const leaf =
     String(filePath).replace(/\.[^.]+$/, "").split(/[\\/]/).pop() || "log";
+
+  const extension = alpha ? ".mov" : ".mp4";
 
   return join(
     process.cwd(),
     "out",
-    `${leaf}-flight${Number(flight) || 1}-sticks.mp4`
+    `${leaf}-flight${Number(flight) || 1}-sticks${extension}`
   );
 }
 
@@ -507,20 +547,23 @@ export function suggestOutputPath(filePath, flight) {
  * Every GUI render lands in <cwd>/out/ — whatever the client
  * sends, only the file name survives (absolute paths and
  * relative subpaths are flattened), so the repo root and
- * anywhere else stay clean.
+ * anywhere else stay clean. Alpha renders (transparent
+ * background) force a .mov; opaque renders stay .mp4.
  */
-export function resolveOutputPath(output, filePath, flight) {
+export function resolveOutputPath(output, filePath, flight, alpha = false) {
   const requested = String(output ?? "").trim();
 
-  const name =
+  const stem =
     requested
       .split(/[\\/]/)
       .pop()
       ?.replace(/\.[^.]+$/, "") || null;
 
-  return name
-    ? join(process.cwd(), "out", `${name}.mp4`)
-    : suggestOutputPath(filePath, flight);
+  const extension = alpha ? ".mov" : ".mp4";
+
+  return stem
+    ? join(process.cwd(), "out", `${stem}${extension}`)
+    : suggestOutputPath(filePath, flight, alpha);
 }
 
 export function isPathInside(path, dir) {

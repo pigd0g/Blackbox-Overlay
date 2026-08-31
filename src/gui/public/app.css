@@ -140,12 +140,12 @@ html, body {
 .face {
   flex: 1;
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr) 240px;
+  grid-template-columns: 300px minmax(0, 1fr);
   gap: 12px;
   align-items: stretch;
 }
 
-.rail, .themes-rail, .stage {
+.rail, .stage {
   background: var(--plate);
   border-radius: var(--radius-lg);
   border: 1px solid var(--rule);
@@ -154,7 +154,6 @@ html, body {
 }
 
 .rail { display: flex; flex-direction: column; gap: 16px; overflow: auto; }
-.themes-rail { display: flex; flex-direction: column; gap: 14px; }
 .stage { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 
 .rail-title {
@@ -310,6 +309,19 @@ html, body {
   image-rendering: auto;
 }
 
+/* GUI-only transparency affordance: a checkerboard behind
+   the preview canvas so an alpha render is visible. This is
+   never painted into the video frames themselves. */
+.screen-frame.alpha-checker {
+  background:
+    repeating-conic-gradient(#c9cdd2 0% 25%, #eceff2 0% 50%)
+    0 0 / 20px 20px;
+  border-radius: 6px;
+}
+.screen-frame.alpha-checker #screen {
+  background: transparent;
+}
+
 .screen-idle {
   position: absolute;
   inset: 0;
@@ -416,24 +428,39 @@ html, body {
 .t-value-num { font-size: 12px; color: var(--ink-soft); }
 
 /* ------------------------------------------------------
-   Themes rail
+   LOOK strip — horizontal, under the monitor
    ------------------------------------------------------ */
-.theme-stack { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.look-strip {
+  display: grid;
+  grid-template-columns: auto auto minmax(280px, 1fr);
+  gap: 18px;
+  align-items: start;
+  background: var(--well);
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+}
+
+.look-cell { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+
+/* Theme cards become small horizontal swatches */
+.theme-stack { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .theme-card {
   border: 1px solid var(--rule);
-  border-radius: 10px;
-  background: var(--well);
-  padding: 6px;
+  border-radius: 8px;
+  background: var(--plate);
+  padding: 4px;
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
+  width: 92px;
 }
-.theme-card canvas { width: 100%; height: auto; border-radius: 5px; display: block; }
+.theme-card canvas { width: 100%; height: auto; border-radius: 4px; display: block; }
 .theme-name {
-  font-size: 10px;
-  letter-spacing: 0.2em;
+  font-size: 9px;
+  letter-spacing: 0.16em;
   color: var(--ink-soft);
   text-align: center;
 }
@@ -443,7 +470,163 @@ html, body {
   background: var(--plate);
 }
 
+/* Font cards mirror theme cards, label set in the font itself */
+.font-stack { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.font-card {
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--plate);
+  padding: 10px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 86px;
+  min-height: 34px;
+}
+.font-name {
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.font-card[aria-checked="true"] {
+  border-color: var(--dot);
+  box-shadow: 0 0 0 1px var(--dot);
+  background: var(--plate);
+}
+
+.look-settings { gap: 6px; }
+.look-settings .fld { font-size: 12px; }
+.look-settings .out-hint { font-size: 10.5px; }
+
 .out-row { display: flex; align-items: center; gap: 8px; }
+.out-row-clip { align-items: stretch; }
+
+/* Alpha toggle switch */
+.alpha-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+.switch-input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.switch-track {
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--rule);
+  border: 1px solid var(--ink-soft);
+  position: relative;
+  flex: none;
+  transition: background 160ms, border-color 160ms;
+}
+
+.switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--plate);
+  box-shadow: 0 1px 2px rgba(16, 18, 17, 0.4);
+  transition: left 160ms;
+}
+
+.switch-input:checked + .switch-track {
+  background: var(--dot);
+  border-color: var(--dot);
+}
+.switch-input:checked + .switch-track .switch-knob {
+  left: 20px;
+}
+
+.switch-input:focus-visible + .switch-track {
+  outline: 2px solid #f2c230;
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------
+   Colors pane — dedicated full-width section under the
+   LOOK strip; all 21 keys laid out in one row of columns.
+   ------------------------------------------------------ */
+.colors-pane {
+  background: var(--well);
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.colors-pane-head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+
+.colors-pane-head .group-title { margin: 0; }
+
+.colors-hint {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.colors-pane .btn { padding: 5px 14px; font-size: 11.5px; flex: none; }
+
+/* One wide grid: 7 columns × 3 rows covers all 21 keys at
+   full pane width; collapses on narrow viewports. */
+.color-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px 14px;
+}
+
+.color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.color-swatch {
+  width: 30px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  background: var(--well);
+  cursor: pointer;
+  flex: none;
+}
+
+.color-name {
+  font-size: 10.5px;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .out-row-clip { align-items: stretch; }
 .lbl {
   font-size: 10px;
@@ -459,7 +642,7 @@ html, body {
   flex: 1;
   border: 1px solid var(--rule);
   border-radius: 7px;
-  background: var(--well);
+  background: var(--plate);
   color: var(--ink);
   padding: 7px 9px;
 }
@@ -645,23 +828,35 @@ html, body {
 }
 
 /* ------------------------------------------------------
-   Responsive: face folds under the monitor
+   Responsive: face folds; LOOK strip wraps its cells
    ------------------------------------------------------ */
 @media (max-width: 1080px) {
   .face {
-    grid-template-columns: minmax(0, 1fr) 220px;
-    grid-template-areas: "stage stage" "rail themes";
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "stage" "rail";
   }
   .stage { grid-area: stage; }
   .rail { grid-area: rail; }
-  .themes-rail { grid-area: themes; }
+
+  .look-strip {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .color-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
 @media (max-width: 660px) {
-  .face { grid-template-columns: 1fr; grid-template-areas: "stage" "rail" "themes"; }
+  .face { grid-template-columns: 1fr; grid-template-areas: "stage" "rail"; }
   .plate { padding: 12px 14px; flex-wrap: wrap; }
   .rail { overflow: visible; }
   .t-read { display: none; }
+
+  .look-strip { grid-template-columns: 1fr; }
+
+  .color-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  .colors-pane-head { flex-wrap: wrap; }
+  .colors-hint { white-space: normal; }
 }
 
 /* ------------------------------------------------------

@@ -6,9 +6,17 @@
 // A-Z, digits, and a little punctuation. Every glyph is
 // seven strings of five '0'/'1' bits, top row first.
 //
-// pixelText() renders with an integer scale; labels like
-// "ARMED" / "THROTTLE" use scale 2 (10x14 per glyph) so
-// they stay readable in a 500x300 overlay.
+// pixelText() renders with an integer scale; telemetry
+// values like "ARMED" / "22.20V" use scale 3 (15x21 per
+// glyph) and their tiny labels scale 2, so they stay
+// readable in the overlay. An optional shadow
+// color draws a hard drop shadow offset +scale px diagonally
+// beneath the glyphs — keeps text readable over busy
+// footage and both light and dark themes.
+//
+// Frames are RGBA (4 bytes/pixel): alpha 255 when a bit is
+// lit, 0 when dark — so transparent-background renders can
+// key the text cleanly too.
 //
 // ======================================================
 
@@ -56,7 +64,9 @@ const GLYPHS = {
   "-": ["00000", "00000", "00000", "11111", "00000", "00000", "00000"],
   ".": ["00000", "00000", "00000", "00000", "00000", "01100", "01100"],
   ":": ["00000", "01100", "01100", "00000", "01100", "01100", "00000"],
-  "%": ["11001", "11010", "00010", "00100", "01000", "01011", "10011"]
+  "%": ["11001", "11010", "00010", "00100", "01000", "01011", "10011"],
+  "/": ["00001", "00001", "00010", "00100", "01000", "10000", "10000"],
+  "°": ["01100", "01100", "00000", "00000", "00000", "00000", "00000"]
 };
 
 export function getGlyph(character) {
@@ -75,8 +85,35 @@ export function measureText(text, scale = 1) {
 /**
  * Draw text with the 5x7 font. Returns the width drawn,
  * so callers can chain or center. Clipped to the frame.
+ * Frames are RGBA (4 bytes/pixel); lit bits write the full
+ * color with alpha 255.
+ *
+ * shadowColor: when provided, a copy of the text is drawn
+ * offset (+scale, +scale) first, so glyphs get a hard
+ * drop shadow. The shadow is skipped for transparent
+ * frames by passing null (the default).
  */
-export function pixelText(frame, width, height, x, y, text, color, scale = 1) {
+export function pixelText(
+  frame,
+  width,
+  height,
+  x,
+  y,
+  text,
+  color,
+  scale = 1,
+  shadowColor = null
+) {
+  if (shadowColor) {
+    drawText(frame, width, height, x + scale, y + scale, text, shadowColor, scale);
+  }
+
+  drawText(frame, width, height, x, y, text, color, scale);
+
+  return measureText(text, scale);
+}
+
+function drawText(frame, width, height, x, y, text, color, scale) {
   let cursorX = x;
 
   for (const character of String(text ?? "")) {
@@ -107,8 +144,6 @@ export function pixelText(frame, width, height, x, y, text, color, scale = 1) {
 
     cursorX += (GLYPH_WIDTH + 1) * scale;
   }
-
-  return measureText(text, scale);
 }
 
 function plotPixel(frame, width, height, x, y, color) {
@@ -116,8 +151,10 @@ function plotPixel(frame, width, height, x, y, color) {
     return;
   }
 
-  const offset = (y * width + x) * 3;
+  const offset = (y * width + x) * 4;
+
   frame[offset] = color[0];
   frame[offset + 1] = color[1];
   frame[offset + 2] = color[2];
+  frame[offset + 3] = 255;
 }

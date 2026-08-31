@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — TELEMETRY READING (battery, RPM)
+// RotorFlight-Blackbox-Video-Overlay — TELEMETRY READING (battery, RPM, motor, ESC)
 // ======================================================
 //
 // Shared telemetry helpers for the on-frame status bar:
@@ -37,6 +37,11 @@ export const FULL_CELL_VOLTAGE = 4.2;
 
 export const MAX_CELLS = 14;
 export const VBAT_SCALE = 100;
+export const CURRENT_SCALE = 100;
+export const MOTOR_SCALE = 1000;
+
+export const MOTOR_MIN_PCT = 0;
+export const MOTOR_MAX_PCT = 100;
 
 const ROUND = (value, places) => {
   const f = 10 ** places;
@@ -179,8 +184,9 @@ export function cellStatus(perCell) {
 
 /**
  * Read live telemetry for one main frame.
- * Returns { packVolts, cellCount, perCell, rpm } with null
- * for anything the log does not carry.
+ * Returns { packVolts, cellCount, perCell, rpm, motorPct,
+ * current, escTemp } with null for anything the log does
+ * not carry.
  *
  * `cellCount` here is per-frame detection, used for
  * latching (see frameSampler.js); it holds no state.
@@ -190,6 +196,9 @@ export function readTelemetry(frame, binding) {
 
   let packVolts = null;
   let rpm = null;
+  let motorPct = null;
+  let current = null;
+  let escTemp = null;
 
   if (columnIndexes.vbat >= 0) {
     const raw = Number(frame[columnIndexes.vbat]);
@@ -207,8 +216,37 @@ export function readTelemetry(frame, binding) {
     }
   }
 
+  if (columnIndexes.motor >= 0) {
+    const raw = Number(frame[columnIndexes.motor]);
+
+    if (Number.isFinite(raw)) {
+      motorPct = Math.round(
+        Math.min(
+          MOTOR_MAX_PCT,
+          Math.max(MOTOR_MIN_PCT, (raw / MOTOR_SCALE) * 100)
+        ) * 10
+      ) / 10;
+    }
+  }
+
+  if (columnIndexes.ibat >= 0) {
+    const raw = Number(frame[columnIndexes.ibat]);
+
+    if (Number.isFinite(raw)) {
+      current = raw / CURRENT_SCALE;
+    }
+  }
+
+  if (columnIndexes.tesc >= 0) {
+    const raw = Number(frame[columnIndexes.tesc]);
+
+    if (Number.isFinite(raw)) {
+      escTemp = raw;
+    }
+  }
+
   const cellCount = packVolts === null ? null : detectCells(packVolts);
   const perCell = cellCount === null ? null : voltsPerCell(packVolts, cellCount);
 
-  return { packVolts, cellCount, perCell, rpm };
+  return { packVolts, cellCount, perCell, rpm, motorPct, current, escTemp };
 }

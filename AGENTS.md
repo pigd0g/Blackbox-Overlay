@@ -6,7 +6,7 @@ Zero-dependency Node.js (ESM) CLI that decodes Rotorflight blackbox `.bbl` logs 
 
 - `npm test` — runs `node --test` (no other scripts exist; there is no lint/typecheck/build setup, so don't look for one).
 - Single test file: `node --test test/stickMapping.test.mjs` (or any `test/*.test.mjs`).
-- Run the CLI: `node index.js <file.bbl> [--fields] [--json] [--flight N] [--video [out.mp4]] [--fps N] [--theme NAME]`.
+- Run the CLI: `node index.js <file.bbl> [--fields] [--json] [--flight N] [--video [out.mp4]] [--fps N] [--theme NAME] [--font NAME]`.
 - Verify a render end-to-end: `node index.js test/fixtures/Kraken_20260522_025600.bbl --video out/test.mp4` (requires ffmpeg on PATH). Write video output to `out/` — it is gitignored.
 
 ## Conventions
@@ -17,7 +17,8 @@ Zero-dependency Node.js (ESM) CLI that decodes Rotorflight blackbox `.bbl` logs 
 ## Architecture (src/)
 
 - `src/bbl/` — `.bbl` decoding: `byteStream.js` (reader), `headerParser.js` (H header → field names/sysConfig), `frameDecoder.js` (I/P frames with predictors + delta unrolling; also slow/GPS/event frames, corrupt-frame skipping). Public API is `decodeBblFile`/`looksLikeBinaryBbl` in `bblDecoder.js`.
-- `src/render/` — video pipeline: `gimbalFrame.js` paints pixels (`bitmapFont.js` for text), `videoWriter.js` spawns `ffmpeg -f rawvideo -pix_fmt rgb24 -i pipe:0` (frame width/height must be even for yuv420p), `videoRender.js` orchestrates.
+- `src/render/` — video pipeline: `gimbalFrame.js` paints pixels (`bitmapFont.js` for the legacy 5×7 text), `videoWriter.js` spawns `ffmpeg -f rawvideo -pix_fmt rgba -i pipe:0` (frame width/height must be even for yuv420p), `videoRender.js` orchestrates.
+- Font stack: `fonts.js` (registry: ids, weight→static-file maps, per-font metrics) → `fontEngine.js` (from-scratch TTF parser — glyf outlines only, no gvar/CFF) → `fontRaster.js` (AA glyph mask cache) → `textRenderer.js` (drawText/measureText facade; `bitmap` and TTF backends behind one interface). Weights resolve to the bundled static instances (`fonts/*/static/*`), never the variable-font files. Default font is `vt323`. New fonts: drop the `.ttf` (+ OFL.txt) under `fonts/` and add a registry entry with size metrics.
 
 ## Domain quirks (Rotorflight)
 

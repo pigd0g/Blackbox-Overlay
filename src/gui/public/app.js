@@ -25,6 +25,7 @@ const els = {
   fieldList: $("field-list"),
   fieldCount: $("field-count"),
   screen: $("screen"),
+  screenFrame: $("screen-frame"),
   screenIdle: $("screen-idle"),
   playBtn: $("play-btn"),
   trace: $("trace"),
@@ -33,6 +34,12 @@ const els = {
   tValue: $("t-value"),
   frameValue: $("frame-value"),
   themeStack: $("theme-stack"),
+  fontStack: $("font-stack"),
+  alphaToggle: $("alpha-toggle"),
+  alphaHint: $("alpha-hint"),
+  shadowToggle: $("shadow-toggle"),
+  colorGrid: $("color-grid"),
+  themeReset: $("theme-reset"),
   fpsInput: $("fps-input"),
   outputInput: $("output-input"),
   footFacts: $("foot-facts"),
@@ -61,6 +68,12 @@ const state = {
   tracePoints: null,
   theme: "default",
   themes: null,
+  themeKeys: [],
+  themeOverrides: {},
+  font: "vt323",
+  fonts: null,
+  alpha: false,
+  shadow: false,
   playing: false,
   t: 0,
   fps: 30,
@@ -149,16 +162,17 @@ function normalizeFps(value) {
 // Accent wiring — the UI re-inks to the theme's dot
 // ------------------------------------------------------
 
-function applyAccent(themeName) {
-  const theme = state.themes && state.themes[themeName];
+function applyAccent(themeName, overrides = state.themeOverrides) {
+  const base = state.themes && state.themes[themeName];
 
-  if (!theme) return;
+  if (!base) return;
 
+  const theme = { ...base, ...overrides };
   const rootStyle = document.documentElement.style;
 
   rootStyle.setProperty("--dot", theme.dot);
 
-  const match = theme.dot.match(/^#([0-9a-f]{6})$/i);
+  const match = String(theme.dot).match(/^#([0-9a-f]{6})$/i);
 
   if (match) {
     const value = match[1];
@@ -170,6 +184,126 @@ function applyAccent(themeName) {
   }
 }
 
+/**
+ * The effective theme for this render: the selected base
+ * theme with the user's per-key color overrides merged on.
+ */
+function effectiveThemeOverrideList() {
+  return Object.keys(state.themeOverrides).length > 0
+    ? { ...state.themeOverrides }
+    : undefined;
+}
+
+// ------------------------------------------------------
+// Theme color customizer
+// ------------------------------------------------------
+
+const OVERRIDE_LABELS = {
+  background: "Backdrop",
+  box: "Gimbal box",
+  crosshair: "Crosshair",
+  dot: "Stick dot",
+  labelOff: "Text dim",
+  rpm: "RPM",
+  armed: "Armed text",
+  motor: "Motor text",
+  vCell: "Voltage text",
+  current: "Current text",
+  maxCurrent: "Max current text",
+  escTemp: "ESC temp text",
+  barMotor: "Motor bar fill",
+  barCurrent: "Current bar fill",
+  barTrack: "Bar track",
+  textShadow: "Text shadow"
+};
+
+function buildColorGrid() {
+  els.colorGrid.innerHTML = "";
+
+  const base = (state.themes && state.themes[state.theme]) || {};
+  const merged = { ...base, ...state.themeOverrides };
+
+  for (const key of state.themeKeys) {
+    const row = document.createElement("label");
+    row.className = "color-row";
+
+    const swatch = document.createElement("input");
+    swatch.type = "color";
+    swatch.className = "color-swatch";
+    swatch.value = normalizeHex(merged[key]);
+    swatch.dataset.key = key;
+    swatch.addEventListener("input", () => {
+      state.themeOverrides[key] = swatch.value;
+      onThemeColorsOverride(key);
+    });
+
+    const name = document.createElement("span");
+    name.className = "color-name";
+    name.textContent = OVERRIDE_LABELS[key] || key;
+
+    row.append(swatch, name);
+    els.colorGrid.appendChild(row);
+  }
+}
+
+function normalizeHex(hex) {
+  const match = String(hex || "").match(/^#([0-9a-f]{6})$/i);
+
+  return match ? `#${match[1].toLowerCase()}` : "#000000";
+}
+
+/**
+ * Any theme-color change re-inks the console accent (when
+ * the dot moved) and repaints the monitor. Swatch refresh
+ * is debounced — the native picker fires `input` rapidly
+ * while dragging, and each swatch is a server round-trip.
+ */
+const SWATCH_REFRESH_DEBOUNCE_MS = 250;
+let swatchRefreshTimer = 0;
+
+function onThemeColorsOverride(changedKey) {
+  if (changedKey === "dot") {
+    applyAccent(state.theme, state.themeOverrides);
+  }
+
+  // The monitor preview updates immediately (coalesced).
+  requestPreview();
+
+  clearTimeout(swatchRefreshTimer);
+  swatchRefreshTimer = setTimeout(() => {
+    swatchRefreshTimer = 0;
+    refreshSwatches();
+  }, SWATCH_REFRESH_DEBOUNCE_MS);
+}
+
+function resetThemeColors() {
+  state.themeOverrides = {};
+  buildColorGrid();
+  applyAccent(state.theme);
+  clearTimeout(swatchRefreshTimer);
+  requestPreview();
+  refreshSwatches();
+}
+
+els.themeReset.addEventListener("click", () => {
+  resetThemeColors();
+});
+
+els.alphaToggle.addEventListener("change", () => {
+  state.alpha = els.alphaToggle.checked;
+  els.alphaHint.hidden = !state.alpha;
+  // GUI-only affordance: checkerboard behind the preview so
+  // transparency is visible. Never rendered into the video.
+  els.screenFrame.classList.toggle("alpha-checker", state.alpha);
+  updateOutputDefault();
+  requestPreview();
+});
+
+els.shadowToggle.addEventListener("change", () => {
+  state.shadow = els.shadowToggle.checked;
+  requestPreview();
+});
+
 // ------------------------------------------------------
 // Boot
 // ------------------------------------------------------
@@ -179,13 +313,26 @@ async function boot() {
     const serverState = await getJson("/api/state");
 
     state.themes = serverState.themes.themes;
+    state.themeKeys = serverState.themes.keys || [];
 
     for (const name of serverState.themes.names) {
       addThemeCard(name);
     }
 
+    buildColorGrid();
     applyAccent(state.theme);
     markThemeSelection(state.theme);
+
+    // Fonts: card stack + @font-face previews.
+    if (serverState.fonts) {
+      state.fonts = serverState.fonts;
+      state.font = serverState.fonts.default || "vt323";
+      loadFontFaces(serverState.fonts);
+      for (const id of serverState.fonts.ids) {
+        addFontCard(id, serverState.fonts.fonts[id]);
+      }
+      markFontSelection(state.font);
+    }
 
     els.ffmpegPill.dataset.state = serverState.ffmpeg ? "ok" : "missing";
     els.ffmpegPill.textContent = serverState.ffmpeg
@@ -234,49 +381,31 @@ function addThemeCard(name) {
 
   els.themeStack.appendChild(card);
 
-  paintSwatch(canvas, name);
-}
-
-let swatchToken = 0;
-
-async function paintSwatch(canvas, themeName) {
-  const myLog = state.logPath;
-  const myFlight = state.flight;
-
-  if (!myLog || !myFlight) {
-    paintStaticSwatch(canvas, themeName);
-    return;
-  }
-
-  const token = (swatchToken += 1);
-  const t = state.durationSeconds * 0.4;
-
-  const frame = await fetchPreview(
-    { file: myLog, flight: myFlight, t, theme: themeName },
-    token
-  );
-
-  if (
-    frame &&
-    frame.token === token &&
-    state.logPath === myLog &&
-    state.flight === myFlight
-  ) {
-    drawFrameTo(canvas, frame);
-  }
+  // Swatches stay a static miniature of each theme's palette
+  // (painted locally from THEME_HEX). They deliberately do
+  // NOT switch to live log frames once a flight is loaded —
+  // the monitor exists for that.
+  paintStaticSwatch(canvas, name);
 }
 
 // Before a log is loaded, swatches are drawn locally from
 // THEME_HEX — a real layout in miniature.
 function paintStaticSwatch(canvas, themeName) {
-  const theme = state.themes && state.themes[themeName];
+  const base = state.themes && state.themes[themeName];
 
-  if (!theme) return;
+  if (!base) return;
+
+  const theme =
+    themeName === state.theme
+      ? { ...base, ...state.themeOverrides }
+      : base;
 
   const g = canvas.getContext("2d");
   const w = canvas.width;
   const h = canvas.height;
 
+  g.fillStyle = "transparent";
+  g.clearRect(0, 0, w, h);
   g.fillStyle = theme.background;
   g.fillRect(0, 0, w, h);
 
@@ -303,12 +432,14 @@ function paintStaticSwatch(canvas, themeName) {
   g.arc(w - 45 + 28, 5 + 14, 5, 0, Math.PI * 2);
   g.fill();
 
-  g.fillStyle = theme.toggleOn;
-  g.fillRect(6, 52, 18, 4);
-  g.fillStyle = theme.battery;
-  g.fillRect(w / 2 - 9, 52, 18, 4);
+  // Mini telemetry strip: motor bar fill, current bar fill,
+  // RPM accent — mirrors the live layout's accent colors.
+  g.fillStyle = theme.barMotor;
+  g.fillRect(6, 52, 14, 4);
+  g.fillStyle = theme.barCurrent;
+  g.fillRect(w / 2 - 7, 52, 14, 4);
   g.fillStyle = theme.rpm;
-  g.fillRect(w - 24, 52, 18, 4);
+  g.fillRect(w - 20, 52, 14, 4);
 }
 
 function markThemeSelection(name) {
@@ -323,6 +454,8 @@ function markThemeSelection(name) {
 
 async function selectTheme(name) {
   state.theme = name;
+  state.themeOverrides = {};
+  buildColorGrid();
   markThemeSelection(name);
   applyAccent(name);
 
@@ -331,6 +464,70 @@ async function selectTheme(name) {
   void els.screen.offsetWidth;
   els.screen.classList.add("theme-glide");
 
+  await requestPreview();
+}
+
+// ------------------------------------------------------
+// Font cards + @font-face previews
+// ------------------------------------------------------
+
+/**
+ * Register every bundled weight-400 file so card labels
+ * render in their own typeface (the monitor previews come
+ * from the server's real renderer).
+ */
+function loadFontFaces(catalog) {
+  for (const [id, def] of Object.entries(catalog.fonts)) {
+    const file = def.weights["400"] ?? Object.values(def.weights)[0];
+
+    if (!file || def.source === "bitmap") continue;
+
+    const family = `overlay-${id}`;
+    const face = new FontFace(family, `url(/${file})`);
+
+    face.load().then((loaded) => {
+      document.fonts.add(loaded);
+      for (const card of els.fontStack.children) {
+        if (card.dataset.font === id) {
+          card.querySelector(".font-name").style.fontFamily = `'${family}', monospace`;
+        }
+      }
+    }).catch(() => {
+      // Card falls back to the console font; not fatal.
+    });
+  }
+}
+
+function addFontCard(id, def) {
+  const card = document.createElement("button");
+  card.type = "button";
+  card.className = "font-card";
+  card.setAttribute("role", "radio");
+  card.setAttribute("aria-checked", "false");
+  card.dataset.font = id;
+
+  const name = document.createElement("span");
+  name.className = "font-name";
+  name.textContent = def ? def.name : id.toUpperCase();
+  card.appendChild(name);
+
+  card.addEventListener("click", () => selectFont(id));
+
+  els.fontStack.appendChild(card);
+}
+
+function markFontSelection(id) {
+  for (const card of els.fontStack.children) {
+    card.setAttribute(
+      "aria-checked",
+      String(card.dataset.font === id)
+    );
+  }
+}
+
+async function selectFont(id) {
+  state.font = id;
+  markFontSelection(id);
   await requestPreview();
 }
 
@@ -390,12 +587,25 @@ function previewCurrent() {
     file: state.logPath,
     flight: state.flight,
     t: state.t,
-    theme: state.theme
+    theme: state.theme,
+    themeOverrides: effectiveThemeOverrideList(),
+    font: state.font,
+    alpha: state.alpha,
+    shadow: state.shadow
   };
 }
 
 function sameSubject(a, b) {
-  return a.file === b.file && a.flight === b.flight;
+  return (
+    a.file === b.file &&
+    a.flight === b.flight &&
+    a.alpha === b.alpha &&
+    a.shadow === b.shadow &&
+    a.theme === b.theme &&
+    a.font === b.font &&
+    JSON.stringify(a.themeOverrides || {}) ===
+      JSON.stringify(b.themeOverrides || {})
+  );
 }
 
 /** Queue a preview; coalesces while one request is in flight. */
@@ -789,7 +999,7 @@ function renderFields(flight) {
 
 function refreshSwatches() {
   for (const card of els.themeStack.children) {
-    paintSwatch(card.querySelector("canvas"), card.dataset.theme);
+    paintStaticSwatch(card.querySelector("canvas"), card.dataset.theme);
   }
 }
 
@@ -799,9 +1009,19 @@ function updateOutputDefault() {
   const leaf =
     state.logPath.split(/[\\/]/).pop().replace(/\.[^.]+$/, "") || "log";
 
+  const extension = state.alpha ? "mov" : "mp4";
+
   if (els.outputInput.dataset.touched !== "1") {
-    els.outputInput.value = `out/${leaf}-flight${state.flight}-sticks.mp4`;
+    els.outputInput.value = `out/${leaf}-flight${state.flight}-sticks.${extension}`;
     els.outputInput.dataset.touched = "1";
+  } else {
+    // Keep the user's stem; follow the alpha toggle only for
+    // the extension.
+    const current = els.outputInput.value.trim();
+
+    if (/\.(mp4|mov)$/i.test(current)) {
+      els.outputInput.value = current.replace(/\.(mp4|mov)$/i, `.${extension}`);
+    }
   }
 }
 
@@ -1002,6 +1222,10 @@ els.renderBtn.addEventListener("click", async () => {
       flight: state.flight,
       fps: state.fps,
       theme: state.theme,
+      themeOverrides: effectiveThemeOverrideList(),
+      font: state.font,
+      alpha: state.alpha,
+      shadow: state.shadow,
       output: els.outputInput.value.trim()
     });
 
@@ -1066,6 +1290,12 @@ function showDone(job) {
   els.videoDialog.showModal();
   els.renderMsg.textContent = "Loading video…";
 
+  // Alpha renders are ProRes 4444 (.mov), which browsers
+  // cannot decode. The render pipeline writes a flattened
+  // <name>.preview.mp4 (checkerboard composite) next to it
+  // — play that in the dialog, keep the .mov as deliverable.
+  const playable = job.previewPath ?? job.output;
+
   // Load first, play only when the file is actually ready —
   // and surface any decode error instead of a dead dialog.
   const player = els.videoPlayer;
@@ -1083,7 +1313,10 @@ function showDone(job) {
 
   function onReady() {
     cleanup();
-    els.renderMsg.textContent = `Done — ${job.frames} frames → ${job.output}`;
+    els.renderMsg.textContent =
+      job.alpha && job.previewPath
+        ? `Done — ${job.frames} frames → ${job.output} (preview below; the .mov carries the real alpha)`
+        : `Done — ${job.frames} frames → ${job.output}`;
     player.play().catch(() => {
       // Autoplay may be refused; controls remain available.
     });
@@ -1097,7 +1330,7 @@ function showDone(job) {
 
   player.addEventListener("canplay", onReady);
   player.addEventListener("error", onError);
-  player.src = `/api/media?path=${encodeURIComponent(job.output)}`;
+  player.src = `/api/media?path=${encodeURIComponent(playable)}`;
   player.load();
 }
 

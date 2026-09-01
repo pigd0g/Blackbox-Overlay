@@ -224,47 +224,61 @@ export function pixelCircle(buf, width, height, cx, cy, radius, color) {
  * radius AND outside the inner radius, within the angular
  * sweep. Sweep starts at 12 o'clock and runs clockwise;
  * fraction 0–1 of the full circle (≤0 none, ≥1 full ring).
+ *
+ * Per-pixel classification and angles depend only on
+ * (outerR, innerR) — never on fraction, colour, or placement
+ * — so each radius pair's geometry is precomputed once into
+ * a table (state + cached atan2/hypot) and every later frame
+ * paints with table lookups only. Values are byte-identical
+ * to computing the trig live.
  */
-export function pixelRing(
-  buf,
-  width,
-  height,
-  cx,
-  cy,
-  outerR,
-  innerR,
-  fraction,
-  color
-) {
+const RING_SAMPLES = 4;
+const RING_SAMPLES_SQ = RING_SAMPLES * RING_SAMPLES;
+
+const ringTableCache = new Map();
+
+function ringTable(outerR, innerR) {
+  const key = `${outerR}|${innerR}`;
+
+  let table = ringTableCache.get(key);
+
+  if (!table) {
+    if (ringTableCache.size > 32) {
+      ringTableCache.clear(); // defensive: sizes are bounded in practice
+    }
+
+    table = buildRingTable(outerR, innerR);
+    ringTableCache.set(key, table);
+  }
+
+  return table;
+}
+
+/**
+ * Geometry table for one radius pair. Per pixel:
+ *   state 0 — outside the ring bounding tests, never painted
+ *   state 1 — fully inside: paint solid when its centre angle
+ *             is within the sweep (angle cached)
+ *   state 2 — edge: per-sub-sample inside-annulus mask (16
+ *             bits) + cached sub-sample angles; coverage is
+ *             the masked sub-samples that also pass the sweep
+ */
+function buildRingTable(outerR, innerR) {
   const r = Math.max(1, outerR);
   const inner = Math.max(0, Math.min(innerR, r - 1));
   const c = Math.ceil(r);
-  const SAMPLES = 4;
-  const SAMPLES_SQ = SAMPLES * SAMPLES;
-  const alphaScale = (color[3] ?? 255) / 255;
+  const side = 2 * c + 1;
+  const size = side * side;
 
-  // Angle from 12 o'clock, clockwise. atan2(dx, -dy) yields
-  // [−π, π]; positive shifts map it to [0, 2π).
-  const coveredAngle = (px, py) => {
-    if (fraction >= 1) {
-      return true;
-    }
-
-    if (fraction <= 0) {
-      return false;
-    }
-
-    let angle = Math.atan2(px, -py);
-
-    if (angle < 0) {
-      angle += Math.PI * 2;
-    }
-
-    return angle <= fraction * Math.PI * 2;
-  };
+  const state = new Uint8Array(size);
+  const angles = new Float64Array(size);
+  const subMask = new Uint16Array(size);
+  const subOffsets = new Int32Array(size);
+  const subAngleList = [];
 
   for (let dy = -c; dy <= c; dy += 1) {
     for (let dx = -c; dx <= c; dx += 1) {
+      const index = (dy + c) * side + (dx + c);
       const ax = Math.abs(dx);
       const ay = Math.abs(dy);
       const farX = ax + 0.5;
@@ -277,50 +291,145 @@ export function pixelRing(
       // Fully inside: nearest point clears the inner radius
       // and the farthest stays within the outer.
       if (farDist <= r && nearDist >= inner) {
-        if (coveredAngle(dx, dy)) {
+        state[index] = 1;
+        angles[index] = normalizedAngle(dx, -dy);
+        continue;
+      }
+
+      // Quick rejects: beyond the ring, or inside the hole.
+      if (nearDist > r || farDist < inner) {
+        continue;
+      }
+
+      // Edge region: supersample distance and angle.
+      state[index] = 2;
+      subOffsets[index] = subAngleList.length;
+
+      let mask = 0;
+
+      for (let sy = 0; sy < RING_SAMPLES; sy += 1) {
+        for (let sx = 0; sx < RING_SAMPLES; sx += 1) {
+          const px = dx + (sx + 0.5) / RING_SAMPLES - 0.5;
+          const py = dy + (sy + 0.5) / RING_SAMPLES - 0.5;
+          const dist = Math.hypot(px, py);
+          const insideAnnulus = dist <= r && dist >= inner;
+
+          // Angles are pushed for every sub-sample so the
+          // flat list stays 16-aligned per edge pixel; the
+          // mask decides which entries a sweep consults.
+          subAngleList.push(insideAnnulus ? normalizedAngle(px, -py) : 0);
+
+          if (insideAnnulus) {
+            mask |= 1 << (sy * RING_SAMPLES + sx);
+          }
+        }
+      }
+
+      subMask[index] = mask;
+    }
+  }
+
+  return {
+    c,
+    side,
+    state,
+    angles,
+    subMask,
+    subOffsets,
+    subAngles: Float64Array.from(subAngleList)
+  };
+}
+
+/** atan2 → [0, 2π), clockwise from 12 o'clock. */
+function normalizedAngle(px, py) {
+  let angle = Math.atan2(px, py);
+
+  if (angle < 0) {
+    angle += Math.PI * 2;
+  }
+
+  return angle;
+}
+
+export function pixelRing(
+  buf,
+  width,
+  height,
+  cx,
+  cy,
+  outerR,
+  innerR,
+  fraction,
+  color
+) {
+  if (fraction <= 0) {
+    return; // coveredAngle() is false everywhere at ≤0
+  }
+
+  const r = Math.max(1, outerR);
+  const inner = Math.max(0, Math.min(innerR, r - 1));
+  const table = ringTable(r, inner);
+  const c = table.c;
+  const alphaScale = (color[3] ?? 255) / 255;
+
+  // fraction ≥ 1 sweeps everything; the per-angle comparison
+  // against Infinity reproduces coveredAngle()'s early true.
+  const sweep = fraction >= 1
+    ? Infinity
+    : fraction * Math.PI * 2;
+
+  const side = 2 * c + 1;
+
+  for (let dy = -c; dy <= c; dy += 1) {
+    const rowBase = (dy + c) * side;
+
+    for (let dx = -c; dx <= c; dx += 1) {
+      const index = rowBase + (dx + c);
+      const pixelState = table.state[index];
+
+      if (pixelState === 0) {
+        continue;
+      }
+
+      if (pixelState === 1) {
+        if (table.angles[index] <= sweep) {
           blendPixel(buf, width, height, cx + dx, cy + dy, color);
         }
 
         continue;
       }
 
-      // Quick reject: the nearest corner is beyond the ring.
-      if (nearDist > r) {
+      // Edge region: supersampled coverage from the mask.
+      const mask = table.subMask[index];
+
+      if (mask === 0) {
         continue;
       }
 
-      // Quick reject: the farthest corner is inside the hole.
-      if (farDist < inner) {
-        continue;
-      }
-
-      // Edge region: supersample distance and angle.
       let hit = 0;
+      const base = table.subOffsets[index];
 
-      for (let sy = 0; sy < SAMPLES; sy += 1) {
-        for (let sx = 0; sx < SAMPLES; sx += 1) {
-          const px = dx + (sx + 0.5) / SAMPLES - 0.5;
-          const py = dy + (sy + 0.5) / SAMPLES - 0.5;
-          const dist = Math.hypot(px, py);
-
-          if (dist > r || dist < inner) {
-            continue;
-          }
-
-          if (coveredAngle(px, py)) {
-            hit += 1;
-          }
+      for (let bit = 0; bit < RING_SAMPLES_SQ; bit += 1) {
+        if (
+          (mask & (1 << bit)) !== 0 &&
+          table.subAngles[base + bit] <= sweep
+        ) {
+          hit += 1;
         }
       }
 
       if (hit > 0) {
-        blendPixel(buf, width, height, cx + dx, cy + dy, [
-          color[0],
-          color[1],
-          color[2],
-          Math.round((hit / SAMPLES_SQ) * alphaScale * 255)
-        ]);
+        edgeColorScratch[0] = color[0];
+        edgeColorScratch[1] = color[1];
+        edgeColorScratch[2] = color[2];
+        edgeColorScratch[3] = Math.round((hit / RING_SAMPLES_SQ) * alphaScale * 255);
+
+        blendPixel(buf, width, height, cx + dx, cy + dy, edgeColorScratch);
       }
     }
   }
 }
+
+// Shared scratch colour for edge pixels — blendPixel consumes
+// it synchronously, so one instance serves every call.
+const edgeColorScratch = [0, 0, 0, 0];

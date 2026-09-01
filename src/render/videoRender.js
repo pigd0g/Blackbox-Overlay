@@ -9,16 +9,21 @@
 // everything into ffmpeg.
 //
 // Alpha renders (layout.alpha === true, the default) write
-// ProRes 4444 .mov plus a browser-playable flattened
-// .preview.mp4 (checkerboard composite); opaque renders are
-// H.264 .mp4 filled with the theme background.
+// ProRes 4444 .mov, then flatten a browser-playable
+// .preview.mp4 (checkerboard composite) in a single ffmpeg
+// post-pass; opaque renders are H.264 .mp4 filled with the
+// theme background.
 //
 // ======================================================
 
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { VideoWriter, checkFfmpegAvailable } from "./videoWriter.js";
+import {
+  VideoWriter,
+  checkFfmpegAvailable,
+  flattenAlphaPreview
+} from "./videoWriter.js";
 import { createFlightSampler } from "./frameSampler.js";
 import { createFieldStats } from "./layout/fieldStats.js";
 import { buildSceneState } from "./layout/sceneState.js";
@@ -26,13 +31,6 @@ import { paintScene } from "./layout/scenePainter.js";
 import { resolveTheme, mergeThemeOverrides } from "./themes.js";
 
 export const DEFAULT_FPS = 30;
-
-// Checkerboard cell used to flatten alpha preview frames —
-// mirrors the GUI's transparency affordance so the browser
-// dialog shows exactly what an editor would key.
-const PREVIEW_CHECKER_SIZE = 20;
-const PREVIEW_CHECKER_A = [201, 205, 210]; // #C9CDD2
-const PREVIEW_CHECKER_B = [236, 239, 242]; // #ECEFF2
 
 /**
  * Default output path next to the log: alpha renders land
@@ -64,52 +62,6 @@ export function previewPathFor(outputPath) {
 }
 
 /**
- * Flatten one RGBA frame over a static checkerboard:
- * alpha 0 pixels show the checker, partial alpha blends.
- * Returns the same buffer for reuse-friendly callers.
- */
-function compositeOverCheckerboard(frame, checker) {
-  for (let i = 0; i < frame.length; i += 4) {
-    const a = frame[i + 3];
-
-    if (a !== 255) {
-      frame[i] = (frame[i] * a) / 255 + ((checker[i] * (255 - a)) / 255);
-      frame[i + 1] =
-        (frame[i + 1] * a) / 255 + ((checker[i + 1] * (255 - a)) / 255);
-      frame[i + 2] =
-        (frame[i + 2] * a) / 255 + ((checker[i + 2] * (255 - a)) / 255);
-      frame[i + 3] = 255;
-    }
-  }
-
-  return frame;
-}
-
-function buildCheckerboard(width, height) {
-  const checker = new Uint8Array(width * height * 4);
-
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const oddSquare =
-        (Math.floor(x / PREVIEW_CHECKER_SIZE) +
-          Math.floor(y / PREVIEW_CHECKER_SIZE)) %
-          2 ===
-        1;
-
-      const color = oddSquare ? PREVIEW_CHECKER_A : PREVIEW_CHECKER_B;
-      const offset = (y * width + x) * 4;
-
-      checker[offset] = color[0];
-      checker[offset + 1] = color[1];
-      checker[offset + 2] = color[2];
-      checker[offset + 3] = 255;
-    }
-  }
-
-  return checker;
-}
-
-/**
  * Render a decoded flight through a layout to video.
  *
  * @param {object}  flight          decoded flight from decodeBblFile()
@@ -119,6 +71,8 @@ function buildCheckerboard(width, height) {
  *                  (canvas/grid/alpha/shadow/theme/items);
  *                  a missing layout renders an empty canvas
  * @param {number}  [options.fps]   output frame rate (default 30)
+ * @param {boolean} [options.preview] alpha renders also transcode
+ *                  a browser-playable .preview.mp4 (default true)
  * @param {(msg: string) => void} [options.onProgress]
  * @returns {Promise<{frames: number, fps: number, durationSeconds: number}>}
  */
@@ -126,6 +80,7 @@ export async function renderLayoutVideo(flight, outputPath, options = {}) {
   const layout = options.layout;
   const fps = options.fps ?? DEFAULT_FPS;
   const alpha = layout.alpha === true;
+  const wantPreview = options.preview !== false;
 
   if (!Number.isFinite(fps) || fps <= 0) {
     throw new Error(`fps must be a positive number, got ${fps}`);
@@ -182,18 +137,6 @@ export async function renderLayoutVideo(flight, outputPath, options = {}) {
 
   const writer = new VideoWriter(outputPath, fps, width, height, { alpha });
 
-  const previewWriter = alpha
-    ? new VideoWriter(previewPathFor(outputPath), fps, width, height, {
-        alpha: false
-      })
-    : null;
-  const checker = previewWriter ? buildCheckerboard(width, height) : null;
-  // Reused for every preview frame so alpha renders don't
-  // allocate a fresh RGBA copy per frame.
-  const previewScratch = previewWriter
-    ? new Uint8Array(width * height * 4)
-    : null;
-
   try {
     for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
       const tSeconds = frameIndex / fps;
@@ -208,13 +151,6 @@ export async function renderLayoutVideo(flight, outputPath, options = {}) {
 
       await writer.writeFrame(frame);
 
-      if (previewWriter) {
-        previewScratch.set(frame);
-        await previewWriter.writeFrame(
-          compositeOverCheckerboard(previewScratch, checker)
-        );
-      }
-
       if (options.onProgress && frameIndex % 500 === 0 && frameIndex > 0) {
         options.onProgress(
           `rendered ${frameIndex}/${frameCount} frames...`
@@ -223,14 +159,25 @@ export async function renderLayoutVideo(flight, outputPath, options = {}) {
     }
 
     await writer.finish();
-
-    if (previewWriter) {
-      await previewWriter.finish();
-    }
   } catch (error) {
     await writer.abort();
-    await previewWriter?.abort();
     throw error;
+  }
+
+  if (alpha && wantPreview) {
+    // The browser-playable flattened preview is transcoded
+    // from the finished .mov in one ffmpeg pass — the render
+    // loop pipes each frame exactly once. A failure here
+    // errors the job; the .mov itself is already complete.
+    options.onProgress?.("encoding preview...");
+
+    await flattenAlphaPreview(
+      outputPath,
+      previewPathFor(outputPath),
+      fps,
+      width,
+      height
+    );
   }
 
   options.onProgress?.(`rendered ${frameCount}/${frameCount} frames...`);
@@ -239,7 +186,9 @@ export async function renderLayoutVideo(flight, outputPath, options = {}) {
     frames: frameCount,
     fps,
     durationSeconds,
-    ...(previewWriter ? { previewPath: previewPathFor(outputPath) } : {})
+    ...(alpha && wantPreview
+      ? { previewPath: previewPathFor(outputPath) }
+      : {})
   };
 }
 

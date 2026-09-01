@@ -367,23 +367,23 @@ test("preview honors path-keyed theme overrides", async () => {
 
     const buffer = Buffer.from(await response.arrayBuffer());
 
-    // Count exact dot-colored pixels.
-    let dotish = 0;
+    // Count exact green-dot pixels (the override colour).
+    let green = 0;
 
     for (let i = 0; i < buffer.length; i += 4) {
-      if (buffer[i] === 0xee && buffer[i + 1] === 0x42 && buffer[i + 2] === 0x66) {
-        dotish += 1;
+      if (buffer[i] === 0x00 && buffer[i + 1] === 0xff && buffer[i + 2] === 0x88) {
+        green += 1;
       }
     }
 
-    return dotish;
+    return green;
   };
 
   const baseline = await probe(null);
   const overridden = await probe({ "stick.dot": "#00FF88" });
 
-  assert.ok(baseline > 0, "default dot should be present");
-  assert.equal(overridden, 0, "overridden dot color replaces #EE4266");
+  assert.equal(baseline, 0, "no green pixels in the default theme");
+  assert.ok(overridden > 0, "stick.dot override paints the dot green");
 });
 
 test("preview differentiates fonts", async () => {

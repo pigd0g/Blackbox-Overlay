@@ -283,6 +283,28 @@ html, body {
   color: var(--ink-soft);
 }
 
+/* Preview backdrop quick-selectors (browser-only affordance) */
+.bg-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 4px;
+}
+
+.bg-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(32, 44, 38, 0.35);
+  padding: 0;
+  cursor: pointer;
+}
+
+.bg-swatch[aria-checked="true"] {
+  border-color: var(--dot, #1a6fb0);
+  box-shadow: 0 0 0 2px rgba(26, 111, 176, 0.25);
+}
+
 /* Switches */
 .alpha-row {
   display: flex;
@@ -620,7 +642,16 @@ html, body {
   margin: 7px 0;
   font-size: 12.5px;
 }
-.prop-row select.fld { flex: 1; width: auto; }
+.prop-row select.fld {
+  flex: 1;
+  width: auto;
+  /* Selects refuse to shrink below their longest option text
+     unless min-width is cleared — without this "Max value"
+     and "Layout" overflow the rail. Cap = same width as the
+     row's other fields. */
+  min-width: 0;
+  max-width: 100%;
+}
 .prop-name {
   color: var(--ink-soft);
   flex: none;

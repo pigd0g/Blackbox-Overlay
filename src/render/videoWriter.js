@@ -163,3 +163,74 @@ export function checkFfmpegAvailable() {
     probe.on("close", (code) => resolve(code === 0));
   });
 }
+
+// Checkerboard cell + colours for the flattened alpha preview
+// — mirrors the GUI's transparency affordance so the browser
+// dialog shows exactly what an editor would key.
+const PREVIEW_CHECKER_SIZE = 20;
+const PREVIEW_CHECKER_A = [201, 205, 210]; // #C9CDD2
+const PREVIEW_CHECKER_B = [236, 239, 242]; // #ECEFF2
+
+/**
+ * Flatten a finished alpha .mov over a static checkerboard and
+ * encode a browser-playable H.264 .preview.mp4 — one ffmpeg
+ * post-pass instead of a second live encoder during the render.
+ *
+ * The checkerboard is generated inside ffmpeg (color source +
+ * per-channel geq), so no JS pixel loop and no image library:
+ * the pattern reproduces the 20px checker grid (#C9CDD2 /
+ * #ECEFF2) the render loop used to composite in JS, and
+ * overlay() does the alpha blend at C speed.
+ */
+export function flattenAlphaPreview(movPath, outputPath, fps, width, height) {
+  const checker =
+    `color=c=#C9CDD2:s=${width}x${height}:r=${fps},format=rgb24,` +
+    `geq=` +
+    `r='if(mod(floor(X/${PREVIEW_CHECKER_SIZE})+floor(Y/${PREVIEW_CHECKER_SIZE}),2),` +
+    `${PREVIEW_CHECKER_A[0]},${PREVIEW_CHECKER_B[0]})'` +
+    `:g='if(mod(floor(X/${PREVIEW_CHECKER_SIZE})+floor(Y/${PREVIEW_CHECKER_SIZE}),2),` +
+    `${PREVIEW_CHECKER_A[1]},${PREVIEW_CHECKER_B[1]})'` +
+    `:b='if(mod(floor(X/${PREVIEW_CHECKER_SIZE})+floor(Y/${PREVIEW_CHECKER_SIZE}),2),` +
+    `${PREVIEW_CHECKER_A[2]},${PREVIEW_CHECKER_B[2]})'`;
+
+  const ffmpeg = spawn("ffmpeg", [
+    "-y",
+    "-loglevel", "error",
+    "-i", movPath,
+    "-f", "lavfi", "-i", checker,
+    "-filter_complex",
+    // Overlay the keyed overlay over the checkerboard; the
+    // color source is infinite, so shortest ends at the .mov.
+    "[0:v]format=yuva444p[fg];[1:v][fg]overlay=0:0:shortest=1,format=yuv420p",
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+    "-movflags", "+faststart",
+    outputPath
+  ], {
+    stdio: ["ignore", "ignore", "pipe"]
+  });
+
+  const stderrChunks = [];
+
+  ffmpeg.stderr.on("data", (chunk) => stderrChunks.push(chunk));
+
+  return new Promise((resolve, reject) => {
+    ffmpeg.on("error", (error) => reject(error));
+
+    ffmpeg.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+
+      const stderr = Buffer
+        .concat(stderrChunks)
+        .toString()
+        .trim();
+
+      reject(new Error(
+        `ffmpeg preview flatten exited with code ${code}` +
+        (stderr ? `: ${stderr}` : "")
+      ));
+    });
+  });
+}

@@ -134,11 +134,16 @@ export function paintTextWidget(
   );
 }
 
-/** Card + accent behind the content (both optional). */
+/** Card + accent behind the content. The accent stripe is a
+ * card decoration: it paints only when the card itself is
+ * enabled (card colour set), so the theme's accent default
+ * never draws a floating stripe on bare items. */
 export function paintCard(buf, width, height, x, y, w, h, colors) {
-  if (colors.card) {
-    pixelRectRounded(buf, width, height, x, y, w, h, CARD_RADIUS, colors.card);
+  if (!colors.card) {
+    return;
   }
+
+  pixelRectRounded(buf, width, height, x, y, w, h, CARD_RADIUS, colors.card);
 
   if (colors.accent) {
     pixelRectRounded(buf, width, height, x, y, ACCENT_WIDTH, h, CARD_RADIUS, colors.accent);

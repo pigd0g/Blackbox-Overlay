@@ -90,6 +90,12 @@
           <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
           <span class="switch-label">Grid</span>
         </label>
+        <div class="bg-picker" id="bg-picker" role="radiogroup" aria-label="Preview backdrop">
+          <button type="button" class="bg-swatch" data-bg="theme" role="radio" aria-checked="false" title="Backdrop: theme"></button>
+          <button type="button" class="bg-swatch" data-bg="light" role="radio" aria-checked="false" title="Backdrop: light"></button>
+          <button type="button" class="bg-swatch" data-bg="dark" role="radio" aria-checked="false" title="Backdrop: dark"></button>
+          <button type="button" class="bg-swatch" data-bg="default" role="radio" aria-checked="true" title="Backdrop: default (pastel)"></button>
+        </div>
         <span class="warn-inline" id="canvas-warn" hidden></span>
       </div>
 
@@ -155,6 +161,12 @@
           <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
           <span class="switch-label">Text shadow</span>
         </label>
+        <label class="alpha-row" for="preview-toggle">
+          <input type="checkbox" class="switch-input" id="preview-toggle" checked>
+          <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+          <span class="switch-label">Browser preview</span>
+        </label>
+        <p class="out-hint" id="preview-hint">Extra .preview.mp4 for in-browser playback</p>
         <div class="out-row">
           <label class="lbl" for="fps-input">FPS</label>
           <input class="fld fld-num" id="fps-input" type="number" min="1" max="120" step="0.01" value="30" inputmode="decimal">

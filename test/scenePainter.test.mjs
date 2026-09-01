@@ -163,6 +163,58 @@ test("firstFreeCell skips covered cells (raster scan)", () => {
   assert.deepEqual(free, { col: 2, row: 0 });
 });
 
+test("cardMinWidth floors the text box only when a card is set", () => {
+  const doc = DEFAULT_LAYOUT();
+  doc.canvas = { width: 800, height: 200 };
+  doc.items.push(createItem("text", {
+    col: 0,
+    row: 0,
+    source: "custom",
+    customText: "HI",
+    cardColor: { hex: "#3366CC", alpha: 100 },
+    cardMinWidth: 300
+  }));
+
+  const { layout, boxes } = normalizeLayout(doc);
+  const cardBox = boxes.get(layout.items[0].id);
+
+  assert.equal(cardBox.width, 300, "floor widens the measured card");
+
+  // Same item without a card: the floor is ignored.
+  const doc2 = DEFAULT_LAYOUT();
+  doc2.canvas = { width: 800, height: 200 };
+  doc2.items.push(createItem("text", {
+    col: 0,
+    row: 0,
+    source: "custom",
+    customText: "HI",
+    cardMinWidth: 300
+  }));
+
+  const { boxes: boxes2 } = normalizeLayout(doc2);
+  const bare = boxes2.get(doc2.items[0].id);
+
+  assert.ok(bare.width < 300, "no card → no floor");
+
+  // Clamp: absurd floors cap at CARD_MIN_WIDTH_MAX.
+  const doc3 = DEFAULT_LAYOUT();
+  doc3.items.push(createItem("text", {
+    col: 0,
+    row: 0,
+    source: "custom",
+    cardColor: { hex: "#3366CC", alpha: 100 },
+    cardMinWidth: 99999
+  }));
+
+  const { layout: layout3, boxes: boxes3 } = normalizeLayout(doc3);
+
+  assert.ok(
+    boxes3.get(layout3.items[0].id).width <= 2048,
+    "cardMinWidth clamps to 2048"
+  );
+  assert.ok(layout3.items[0].props.cardMinWidth <= 2048);
+});
+
 // ------------------------------------------------------
 // Scene painting
 // ------------------------------------------------------
@@ -208,10 +260,10 @@ test("stick: box + crosshair + centred dot paint at known pixels", () => {
     return [frame[o], frame[o + 1], frame[o + 2], frame[o + 3]];
   };
 
-  assert.deepEqual(px(30, 30), [64, 64, 64, 255], "box fill #404040");
+  assert.deepEqual(px(30, 30), [52, 61, 58, 255], "box fill #343D3A");
   // Crosshair: dot radius is 15, so sample well outside it.
-  assert.deepEqual(px(40, 100), [146, 137, 138, 255], "crosshair #92898A");
-  assert.deepEqual(px(100, 100), [238, 66, 102, 255], "dot #EE4266");
+  assert.deepEqual(px(40, 100), [127, 140, 135, 255], "crosshair #7F8C87");
+  assert.deepEqual(px(100, 100), [232, 62, 99, 255], "dot #E83E63");
   assert.deepEqual(px(399, 199), [0, 0, 0, 0], "outside stays transparent");
 });
 
@@ -243,7 +295,7 @@ test("stick dot follows the selected channels", () => {
 
   // Inset keeps the dot inside: cx 100 + 81 (half 100 − dot
   // 15 − margin 4) at full right deflection.
-  assert.deepEqual(px(181, 100), [238, 66, 102, 255], "dot at full right deflection");
+  assert.deepEqual(px(181, 100), [232, 62, 99, 255], "dot at full right deflection");
 });
 
 function createSampler(flight) {
@@ -317,7 +369,7 @@ test("items inherit theme colours when props are null", () => {
   const stick = createItem("stick", { col: 0, row: 0 });
   const stickColors = resolveItemColors(stick, theme);
 
-  assert.deepEqual(stickColors.dot, [0, 217, 255, 255]);
+  assert.deepEqual(stickColors.dot, [0, 200, 240, 255]);
 });
 
 test("item colour override beats the theme slot", () => {

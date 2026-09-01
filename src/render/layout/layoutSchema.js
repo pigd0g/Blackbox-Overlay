@@ -45,6 +45,7 @@ export const CARD_PADDING = 12;
 export const ACCENT_WIDTH = 4;
 export const CARD_RADIUS = 6;
 export const LABEL_VALUE_GAP = 4;
+export const CARD_MIN_WIDTH_MAX = 2048;
 
 const FONT_SIZE_MIN = 8;
 const FONT_SIZE_MAX = 200;
@@ -114,6 +115,7 @@ export function itemDefaults(type) {
         valueSize: null,
         valueColor: null,
         cardColor: null,
+        cardMinWidth: null,
         accentColor: null
       };
 
@@ -131,6 +133,7 @@ export function itemDefaults(type) {
         trackColor: null,
         fillColor: null,
         cardColor: null,
+        cardMinWidth: null,
         accentColor: null
       };
 
@@ -148,6 +151,7 @@ export function itemDefaults(type) {
         trackColor: null,
         fillColor: null,
         cardColor: null,
+        cardMinWidth: null,
         accentColor: null,
         maxValue: { mode: "flightMax" }
       };
@@ -292,6 +296,14 @@ function normalizeItem(raw, layout, warnings) {
         item.props[key] = value === null || value === undefined
           ? null
           : clampInt(value, FONT_SIZE_MIN, FONT_SIZE_MAX, null);
+        break;
+
+      case "cardMinWidth":
+        // null = auto-size from content; otherwise a floor in
+        // px applied when the card is enabled.
+        item.props.cardMinWidth = value === null || value === undefined
+          ? null
+          : clampInt(value, 0, CARD_MIN_WIDTH_MAX, null);
         break;
 
       case "boxColor":
@@ -512,9 +524,21 @@ function sizePx(sizeKey) {
   return WIDGET_SIZES[sizeKey] ?? WIDGET_SIZES.med;
 }
 
+/** Card floor: when the item paints a card, a non-null
+ * cardMinWidth widens the measured box so values stay inside
+ * the card bounds (the paint pass fills the whole box). */
+function cardMinWidthFloor(item) {
+  if (!item.props.cardColor || item.props.cardMinWidth === null) {
+    return 0;
+  }
+
+  return item.props.cardMinWidth;
+}
+
 function measureItemBox(item, layout, renderer, roleSizes) {
   const { x, y } = cellOrigin(layout, item.col, item.row);
   const { labelRolePx, valueRolePx } = roleSizes;
+  const minW = cardMinWidthFloor(item);
 
   if (item.type === "stick") {
     const side = sizePx(item.props.size);
@@ -533,7 +557,12 @@ function measureItemBox(item, layout, renderer, roleSizes) {
         inkHeight(renderer, item.props.labelSize, labelRolePx)
       : 0;
 
-    return { x, y, width: side, height: side + labelH };
+    return {
+      x,
+      y,
+      width: Math.max(side, minW),
+      height: side + labelH
+    };
   }
 
   if (item.type === "bar") {
@@ -547,7 +576,7 @@ function measureItemBox(item, layout, renderer, roleSizes) {
       : 0;
 
     if (!label) {
-      return { x, y, width: barW, height: barH };
+      return { x, y, width: Math.max(barW, minW), height: barH };
     }
 
     const labelW = measure(renderer, label, item.props.labelSize, labelRolePx);
@@ -555,7 +584,7 @@ function measureItemBox(item, layout, renderer, roleSizes) {
     return {
       x,
       y,
-      width: Math.max(barW, Math.ceil(labelW) + CARD_PADDING * 2),
+      width: Math.max(barW, Math.ceil(labelW) + CARD_PADDING * 2, minW),
       height: labelH + barH
     };
   }
@@ -573,7 +602,12 @@ function measureItemBox(item, layout, renderer, roleSizes) {
     const lineH = inkHeight(renderer, size, valueRolePx);
     const innerH = Math.max(lineH, lines.length * Math.round(lineH * 1.25));
 
-    return { x, y, width: Math.ceil(width) + CARD_PADDING * 2, height: innerH + CARD_PADDING * 2 };
+    return {
+      x,
+      y,
+      width: Math.max(Math.ceil(width) + CARD_PADDING * 2, minW),
+      height: innerH + CARD_PADDING * 2
+    };
   }
 
   const label = item.props.showLabel ? textLabelFor(item) : null;
@@ -604,7 +638,7 @@ function measureItemBox(item, layout, renderer, roleSizes) {
   return {
     x,
     y,
-    width: Math.ceil(innerW) + CARD_PADDING * 2,
+    width: Math.max(Math.ceil(innerW) + CARD_PADDING * 2, minW),
     height: innerH + CARD_PADDING * 2
   };
 }

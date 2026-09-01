@@ -176,6 +176,29 @@ test("renderLayoutVideo with alpha produces ProRes 4444 .mov + preview", { skip:
   }
 });
 
+test("renderLayoutVideo with preview:false skips the flattened preview", { skip: !canRender }, async () => {
+  const directory = mkdtempSync(join(tmpdir(), "rfbvo-nopreview-"));
+  const outputPath = join(directory, "overlay.mov");
+
+  try {
+    const flight = syntheticFlight(0.5, 10);
+    const layout = testLayout(true);
+
+    const result = await renderLayoutVideo(flight, outputPath, {
+      fps: 10,
+      layout,
+      preview: false
+    });
+
+    assert.equal(result.frames, 5);
+    assert.equal(result.previewPath, undefined, "no preview path returned");
+    assert.ok(existsSync(outputPath), "the .mov itself is still written");
+    assert.equal(existsSync(join(directory, "overlay.preview.mp4")), false);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("renderLayoutVideo rejects stick layouts on flights without rcCommand", async () => {
   const directory = mkdtempSync(join(tmpdir(), "rfbvo-test-"));
   const outputPath = join(directory, "overlay.mp4");

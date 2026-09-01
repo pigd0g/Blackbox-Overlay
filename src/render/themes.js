@@ -31,7 +31,7 @@
 function hex(color) {
   return {
     hex: `#${color.replace("#", "").padStart(6, "0").toLowerCase()}`,
-    alpha: 100
+    alpha: 100,
   };
 }
 
@@ -41,16 +41,21 @@ function theme(values) {
     textShadow: hex(values.textShadow),
     fonts: {
       label: { size: values.labelSize, color: hex(values.labelColor) },
-      value: { size: values.valueSize, color: hex(values.valueColor) }
+      value: { size: values.valueSize, color: hex(values.valueColor) },
     },
-    card: { color: null, accent: null },
+    card: {
+      color: null,
+      // The accent stripe defaults to the value colour so the
+      // card reads as part of the theme before any override.
+      accent: hex(values.valueColor),
+    },
     stick: {
       box: hex(values.box),
       crosshair: hex(values.crosshair),
-      dot: hex(values.dot)
+      dot: hex(values.dot),
     },
     bar: { track: hex(values.track), fill: hex(values.fill) },
-    donut: { track: hex(values.donutTrack), fill: hex(values.donutFill) }
+    donut: { track: hex(values.donutTrack), fill: hex(values.donutFill) },
   };
 }
 
@@ -60,112 +65,111 @@ export const THEME_NAMES = [
   "gunmetal",
   "charcoal",
   "slate",
-  "lime"
+  "lime",
 ];
 
 export const THEMES = {
-  // The original palette, re-inked: dark ink labels, near-
-  // black values, the crimson dot, green fills.
+  // Original palette — sage + crimson
   default: theme({
     background: "#C6D8D3",
-    textShadow: "#F2F2F2",
+    textShadow: "#E8F0ED",
     labelSize: 15,
-    labelColor: "#3E4A46",
+    labelColor: "#34413D",
     valueSize: 22,
-    valueColor: "#14201C",
-    box: "#404040",
-    crosshair: "#92898A",
-    dot: "#EE4266",
+    valueColor: "#E83E63",
+    box: "#343D3A",
+    crosshair: "#7F8C87",
+    dot: "#E83E63",
     track: "#B9C2BB",
-    fill: "#2E7D32",
+    fill: "#E83E63",
     donutTrack: "#B9C2BB",
-    donutFill: "#2E7D32"
+    donutFill: "#E83E63",
   }),
 
-  // Paper-white light theme: white text on pale gray.
+  // Paper-white light theme — blue accent
   light: theme({
-    background: "#E8EAED",
-    textShadow: "#4C4D4D",
+    background: "#F1F3F5",
+    textShadow: "#FFFFFF",
     labelSize: 15,
-    labelColor: "#FFFFFF",
+    labelColor: "#4B5560",
     valueSize: 22,
-    valueColor: "#FFFFFF",
-    box: "#404040",
-    crosshair: "#B0B3B8",
-    dot: "#EE4266",
+    valueColor: "#1677C8",
+    box: "#30363D",
+    crosshair: "#9AA3AC",
+    dot: "#1677C8",
     track: "#DADCE0",
-    fill: "#05FF6D",
+    fill: "#1677C8",
     donutTrack: "#DADCE0",
-    donutFill: "#005FEE"
+    donutFill: "#1677C8",
   }),
 
-  // Gunmetal + electric cyan.
+  // Gunmetal + electric cyan
   gunmetal: theme({
-    background: "#B8C7C9",
-    textShadow: "#F2F2F2",
+    background: "#B8C5C8",
+    textShadow: "#E8EFF1",
     labelSize: 15,
-    labelColor: "#172025",
+    labelColor: "#273238",
     valueSize: 22,
-    valueColor: "#0E1418",
-    box: "#252A2E",
-    crosshair: "#65727A",
-    dot: "#00D9FF",
+    valueColor: "#00C8F0",
+    box: "#252C31",
+    crosshair: "#68777E",
+    dot: "#00C8F0",
     track: "#8FA3A6",
-    fill: "#00AFC7",
+    fill: "#00C8F0",
     donutTrack: "#8FA3A6",
-    donutFill: "#E07C06"
+    donutFill: "#00C8F0",
   }),
 
-  // Charcoal + amber — aviation instrumentation.
+  // Charcoal + aviation amber
   charcoal: theme({
-    background: "#C2CBC5",
-    textShadow: "#F2F2F2",
+    background: "#BFC8C2",
+    textShadow: "#E7ECE9",
     labelSize: 15,
-    labelColor: "#1F2422",
+    labelColor: "#29332F",
     valueSize: 22,
-    valueColor: "#14181C",
-    box: "#292C2B",
-    crosshair: "#68716D",
+    valueColor: "#FFB000",
+    box: "#292D2B",
+    crosshair: "#66716B",
     dot: "#FFB000",
     track: "#9AA69D",
-    fill: "#4F8A4B",
+    fill: "#FFB000",
     donutTrack: "#9AA69D",
-    donutFill: "#E69400"
+    donutFill: "#FFB000",
   }),
 
-  // Slate + magenta — modern FPV.
+  // Slate + magenta
   slate: theme({
-    background: "#C4D0D4",
-    textShadow: "#F2F2F2",
+    background: "#C3CDD1",
+    textShadow: "#E8EDF0",
     labelSize: 15,
-    labelColor: "#20272B",
+    labelColor: "#293239",
     valueSize: 22,
-    valueColor: "#141A1E",
-    box: "#30363A",
-    crosshair: "#727D83",
-    dot: "#FF4F8B",
+    valueColor: "#F04F88",
+    box: "#30373C",
+    crosshair: "#707C83",
+    dot: "#F04F88",
     track: "#9AA6AC",
-    fill: "#3D9B78",
+    fill: "#F04F88",
     donutTrack: "#9AA6AC",
-    donutFill: "#D96A42"
+    donutFill: "#F04F88",
   }),
 
-  // Black + lime — aggressive motorsport.
+  // Black + lime — aggressive motorsport
   lime: theme({
-    background: "#CBD3CF",
-    textShadow: "#F2F2F2",
+    background: "#C8D0CC",
+    textShadow: "#E9EEEC",
     labelSize: 15,
-    labelColor: "#18201A",
+    labelColor: "#26302A",
     valueSize: 22,
-    valueColor: "#101614",
+    valueColor: "#B8F500",
     box: "#202522",
-    crosshair: "#59615C",
-    dot: "#B7FF00",
+    crosshair: "#5D6861",
+    dot: "#B8F500",
     track: "#A9B2AA",
-    fill: "#78B82A",
+    fill: "#B8F500",
     donutTrack: "#A9B2AA",
-    donutFill: "#F08C1C"
-  })
+    donutFill: "#B8F500",
+  }),
 };
 
 /**
@@ -226,7 +230,7 @@ export function colorOf(slot, fallback = "#202020") {
     parseInt(h.slice(1, 3), 16),
     parseInt(h.slice(3, 5), 16),
     parseInt(h.slice(5, 7), 16),
-    Math.round((normalized.alpha / 100) * 255)
+    Math.round((normalized.alpha / 100) * 255),
   ];
 }
 
@@ -378,7 +382,7 @@ export function resolveTheme(name) {
 
   if (!THEME_NAMES.includes(key)) {
     throw new Error(
-      `Unknown theme "${name}". Valid themes: ${THEME_NAMES.join(", ")}`
+      `Unknown theme "${name}". Valid themes: ${THEME_NAMES.join(", ")}`,
     );
   }
 

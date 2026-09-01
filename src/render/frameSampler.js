@@ -29,11 +29,39 @@ const DEFAULT_LOOP_INTERVAL_US = 20_000;
  * Returns null when the flight carries no rcCommand[0..3]
  * telemetry (nothing to map onto the gimbals).
  *
+ * Memoized per flight object — decoded flights are immutable
+ * and the sampler is scrub-order independent, so GUI preview
+ * requests and renders share one instance instead of re-scanning
+ * the log (time column, cell latch, prefix max) per request.
+ *
  * `frameAt(tSeconds)` returns
  *   { row, positions, toggles, telemetry }
  * or null past the end of the flight.
  */
+const samplerCache = new WeakMap();
+
+/** Test hook: drop memoized samplers. */
+export function clearSamplerCache() {
+  samplerCache.clear();
+}
+
 export function createFlightSampler(flight) {
+  if (!flight || typeof flight !== "object") {
+    return null;
+  }
+
+  if (samplerCache.has(flight)) {
+    return samplerCache.get(flight);
+  }
+
+  const sampler = buildFlightSampler(flight);
+
+  samplerCache.set(flight, sampler);
+
+  return sampler;
+}
+
+function buildFlightSampler(flight) {
   const binding = detectScales(flight);
 
   if (!binding) {

@@ -32,8 +32,16 @@ import { WIDGET_SIZES } from "./layoutSchema.js";
 
 const rendererCache = new Map();
 
+// Resolved palettes per (theme, item) — colours are pure
+// functions of the item props and theme, and re-parsing hex
+// strings per widget per frame is pure waste in the render
+// loop, where the same theme/item objects are painted
+// thousands of times.
+const itemColorCache = new WeakMap();
+
 export function clearSceneCaches() {
   rendererCache.clear();
+  itemColorCache.clear();
 }
 
 function rendererFor(fontId) {
@@ -83,8 +91,30 @@ function themeSlotColor(theme, path, fallback) {
  * Resolve the colour palette for one widget from its props
  * and the theme. Donut fill/track share the bar slots; the
  * donut's fillColour prop maps onto donut.fill when set.
+ *
+ * Memoized per (theme object, item object) — both are stable
+ * across a render loop (normalizeLayout/resolveTheme run once
+ * per render), so the hex parsing happens once, not per frame.
  */
 export function resolveItemColors(item, theme) {
+  let perTheme = itemColorCache.get(theme);
+
+  if (!perTheme) {
+    perTheme = new WeakMap();
+    itemColorCache.set(theme, perTheme);
+  }
+
+  let colors = perTheme.get(item);
+
+  if (!colors) {
+    colors = computeItemColors(item, theme);
+    perTheme.set(item, colors);
+  }
+
+  return colors;
+}
+
+function computeItemColors(item, theme) {
   const pick = (propKey, fallback) => {
     const explicit = item.props[propKey];
 

@@ -371,7 +371,10 @@ async function handleApi(req, res, url) {
         flight: body.flight,
         fps: body.fps,
         layout: body.layout,
-        output
+        output,
+        // Opt-out switch for the flattened .preview.mp4 that
+        // alpha renders produce for in-browser playback.
+        preview: body.preview !== false
       });
 
       return sendJson(res, 202, started);

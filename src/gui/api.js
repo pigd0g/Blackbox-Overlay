@@ -501,7 +501,10 @@ function broadcast(job, event) {
 /**
  * Start a render job (one at a time). Returns
  * { jobId, job: snapshot }; throws with `.code = "busy"`
- * when a render is already running.
+ * when a render is already in progress.
+ *
+ * `preview: false` skips the browser-playable flattened
+ * .preview.mp4 for alpha renders (only the .mov is written).
  */
 export function startRenderJob({
   file,
@@ -509,7 +512,8 @@ export function startRenderJob({
   flight,
   fps,
   layout: rawLayout,
-  output
+  output,
+  preview
 }) {
   if (activeJob && !activeJob.settled) {
     const error = new Error("A render is already in progress.");
@@ -543,6 +547,7 @@ export function startRenderJob({
     warnings,
     output: resolve(String(output)),
     previewPath: null,
+    preview: preview !== false,
     frames: 0,
     totalFrames: null,
     message: "starting ffmpeg…",
@@ -555,6 +560,7 @@ export function startRenderJob({
   renderLayoutVideo(flightObj, job.output, {
     layout,
     fps: job.fps,
+    preview: job.preview,
     onProgress: (message) => {
       job.message = message;
 

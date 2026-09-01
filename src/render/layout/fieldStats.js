@@ -62,13 +62,38 @@ const DERIVED_READERS = {
 };
 
 /**
- * Statistics for one decoded flight. Constructed once per
- * flight and cached alongside the decoded log (api.js).
+ * Statistics for one decoded flight. Memoized per flight
+ * object — decoded flights are immutable, and the GUI preview
+ * path constructs these per request (api.js); sharing one
+ * instance per flight keeps the lazy per-field scans warm.
  *
  *   stats.flightStats(sourceId) → { min, max } | null
  *   stats.movingMax(sourceId)   → (row) => running max | null
  */
+const statsCache = new WeakMap();
+
+/** Test hook: drop memoized stat sets. */
+export function clearFieldStatsCache() {
+  statsCache.clear();
+}
+
 export function createFieldStats(flight) {
+  if (!flight || typeof flight !== "object") {
+    return null;
+  }
+
+  if (statsCache.has(flight)) {
+    return statsCache.get(flight);
+  }
+
+  const stats = buildFieldStats(flight);
+
+  statsCache.set(flight, stats);
+
+  return stats;
+}
+
+function buildFieldStats(flight) {
   const cache = new Map();
   let cells = null;
   let cellsResolved = false;

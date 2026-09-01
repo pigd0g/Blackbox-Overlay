@@ -26,6 +26,18 @@ const GRID_COLOR = "rgba(32, 44, 38, 0.35)";
 const HOVER_OUTLINE = "rgba(32, 44, 38, 0.55)";
 const SELECT_OUTLINE = "#1a6fb0";
 
+// Browser-only preview backdrops. "theme" tracks the layout
+// theme's background slot; the fixed swatches give editors
+// light/dark checking surfaces. None of these reach the
+// video pipeline (alpha renders stay transparent).
+const BACKDROP_PRESETS = {
+  theme: null, // resolved from the active theme at draw time
+  light: "#ffffff",
+  dark: "#202225",
+  default: PREVIEW_BG,
+};
+const BACKDROP_DEFAULT_KEY = "default";
+
 const els = {
   // header
   saveBtn: $("save-btn"),
@@ -44,6 +56,7 @@ const els = {
   fontStack: $("font-stack"),
   alphaToggle: $("alpha-toggle"),
   shadowToggle: $("shadow-toggle"),
+  previewToggle: $("preview-toggle"),
   fpsInput: $("fps-input"),
   outputInput: $("output-input"),
   // telemetry rail
@@ -58,6 +71,7 @@ const els = {
   gridCols: $("grid-cols"),
   gridRows: $("grid-rows"),
   gridToggle: $("grid-toggle"),
+  bgPicker: $("bg-picker"),
   canvasWarn: $("canvas-warn"),
   screen: $("screen"),
   gridCanvas: $("grid-canvas"),
@@ -90,7 +104,7 @@ const els = {
   videoDialog: $("video-dialog"),
   videoClose: $("video-close"),
   videoPlayer: $("video-player"),
-  videoPath: $("video-path")
+  videoPath: $("video-path"),
 };
 
 // ------------------------------------------------------
@@ -118,8 +132,10 @@ const state = {
   previewJob: 0,
   previewBusy: false,
   previewPending: false,
+  // Browser-only preview backdrop key (BACKDROP_PRESETS).
+  backdrop: BACKDROP_DEFAULT_KEY,
   // transient drag state
-  drag: null
+  drag: null,
 };
 
 const ctx = els.screen.getContext("2d");
@@ -152,7 +168,7 @@ async function postJson(url, body) {
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
   });
 
   const payload = await response.json().catch(() => ({}));
@@ -221,14 +237,14 @@ function clamp(v, min, max) {
 function defaultLayoutObject() {
   return {
     version: 2,
-    canvas: { width: 1920, height: 1080 },
-    grid: { cols: 12, rows: 6 },
+    canvas: { width: 800, height: 500 },
+    grid: { cols: 14, rows: 14 },
     alpha: true,
     shadow: false,
     theme: "default",
     font: "vt323",
     themeOverrides: {},
-    items: []
+    items: [],
   };
 }
 
@@ -240,7 +256,7 @@ function scheduleSync(delay = 120) {
   normalizeTimer = setTimeout(async () => {
     try {
       const result = await postJson("/api/layout/normalize", {
-        layout: state.layout
+        layout: state.layout,
       });
 
       state.layout = result.layout;
@@ -268,7 +284,9 @@ function scheduleSync(delay = 120) {
 }
 
 function selectedItem() {
-  return state.layout?.items.find((item) => item.id === state.selectedId) ?? null;
+  return (
+    state.layout?.items.find((item) => item.id === state.selectedId) ?? null
+  );
 }
 
 function selectedItemBox() {
@@ -287,8 +305,8 @@ async function fetchPreview(token) {
       layout: state.layout,
       file: state.logPath,
       flight: state.flight,
-      t: state.t
-    })
+      t: state.t,
+    }),
   });
 
   if (!response.ok) {
@@ -320,7 +338,7 @@ async function fetchPreview(token) {
     layoutWidth: layoutW,
     layoutHeight: layoutH,
     pixels: new Uint8ClampedArray(buffer),
-    token
+    token,
   };
 }
 
@@ -330,8 +348,67 @@ function drawFrameTo(frame) {
     els.screen.height = frame.height;
   }
 
+  // putImageData REPLACES the bitmap (no compositing), so the
+  // chosen backdrop must live in CSS: transparent frame
+  // pixels reveal the element background beneath. Browser
+  // decoration only — the video pipeline never sees it.
   ctx.putImageData(new ImageData(frame.pixels, frame.width, frame.height), 0, 0);
 }
+
+/** Resolved preview backdrop colour, or "" when the canvas
+ * should keep its transparent default (opaque layout). */
+function previewBackdropColor() {
+  if (state.layout?.alpha !== true) {
+    return ""; // opaque frames paint their own background
+  }
+
+  const key = state.backdrop;
+
+  if (key === "theme") {
+    return (
+      state.themeMaps?.[state.layout.theme]?.background ??
+      BACKDROP_PRESETS[BACKDROP_DEFAULT_KEY]
+    );
+  }
+
+  return BACKDROP_PRESETS[key] ?? BACKDROP_PRESETS[BACKDROP_DEFAULT_KEY];
+}
+
+/** Paint the backdrop swatches (theme swatch tracks the
+ * current theme's background slot) and mark the selection. */
+function buildBackdropPicker() {
+  if (!els.bgPicker) return;
+
+  const backdrop = previewBackdropColor();
+  const themeBg =
+    state.themeMaps?.[state.layout?.theme]?.background ??
+    BACKDROP_PRESETS[BACKDROP_DEFAULT_KEY];
+
+  for (const button of els.bgPicker.querySelectorAll(".bg-swatch")) {
+    const key = button.dataset.bg;
+
+    button.style.background = key === "theme" ? themeBg : BACKDROP_PRESETS[key];
+    button.setAttribute("aria-checked", String(key === state.backdrop));
+  }
+
+  // putImageData replaces the bitmap (no compositing), so the
+  // backdrop lives in CSS: the canvas reveals its background
+  // wherever the alpha frame is transparent. The bezel
+  // follows so the whole monitor reads as one surface.
+  els.screen.style.background = backdrop;
+  els.screenFrame.style.background =
+    backdrop || BACKDROP_PRESETS[BACKDROP_DEFAULT_KEY];
+}
+
+els.bgPicker?.addEventListener("click", (event) => {
+  const button = event.target.closest(".bg-swatch");
+
+  if (!button) return;
+
+  state.backdrop = button.dataset.bg ?? BACKDROP_DEFAULT_KEY;
+  buildBackdropPicker();
+  requestPreview();
+});
 
 function requestPreview() {
   if (!state.layout) return;
@@ -411,6 +488,21 @@ function drawGrid() {
 
   gridCtx.setLineDash([]);
 
+  // Objects occlude the grid: knock the lines out of every
+  // item's measured box so the frame beneath shows through
+  // and items always read as sitting ON the grid. The
+  // selection outline (drawn next) stays above everything.
+  const s = state.previewScale;
+
+  for (const box of Object.values(state.boxes)) {
+    gridCtx.clearRect(
+      box.x * s - 1,
+      box.y * s - 1,
+      box.width * s + 2,
+      box.height * s + 2
+    );
+  }
+
   drawSelection();
 }
 
@@ -451,7 +543,7 @@ function canvasPoint(event) {
 
   return {
     x: ((event.clientX - rect.left) / rect.width) * layoutW,
-    y: ((event.clientY - rect.top) / rect.height) * layoutH
+    y: ((event.clientY - rect.top) / rect.height) * layoutH,
   };
 }
 
@@ -484,13 +576,13 @@ function cellFromPoint(point) {
     col: clamp(
       Math.floor(point.x / (layout.canvas.width / layout.grid.cols)),
       0,
-      layout.grid.cols - 1
+      layout.grid.cols - 1,
     ),
     row: clamp(
       Math.floor(point.y / (layout.canvas.height / layout.grid.rows)),
       0,
-      layout.grid.rows - 1
-    )
+      layout.grid.rows - 1,
+    ),
   };
 }
 
@@ -515,7 +607,7 @@ els.screen.addEventListener("pointerdown", (event) => {
     id: hitId,
     startCol: item.col,
     startRow: item.row,
-    moved: false
+    moved: false,
   };
 
   els.screen.setPointerCapture(event.pointerId);
@@ -701,7 +793,7 @@ const ITEM_DEFAULT_PROPS = {
     showCaption: false,
     boxColor: null,
     crosshairColor: null,
-    dotColor: null
+    dotColor: null,
   },
   text: {
     source: "custom",
@@ -713,7 +805,7 @@ const ITEM_DEFAULT_PROPS = {
     valueSize: null,
     valueColor: null,
     cardColor: null,
-    accentColor: null
+    accentColor: null,
   },
   bar: {
     source: "derived:motorPct",
@@ -728,7 +820,7 @@ const ITEM_DEFAULT_PROPS = {
     trackColor: null,
     fillColor: null,
     cardColor: null,
-    accentColor: null
+    accentColor: null,
   },
   donut: {
     source: "derived:rpm",
@@ -744,13 +836,12 @@ const ITEM_DEFAULT_PROPS = {
     fillColor: null,
     cardColor: null,
     accentColor: null,
-    maxValue: { mode: "flightMax" }
-  }
+    maxValue: { mode: "flightMax" },
+  },
 };
 
 const SOURCE_DEFAULTS = {
   "derived:motorPct": { type: "bar", maxValue: { mode: "percent" } },
-  "derived:rpm": { type: "bar", maxValue: { mode: "flightMax" } }
 };
 
 function addItem(type, propsOverride = {}, at = null) {
@@ -766,7 +857,7 @@ function addItem(type, propsOverride = {}, at = null) {
     type,
     col: cell.col,
     row: cell.row,
-    props
+    props,
   };
 
   state.layout.items.push(item);
@@ -791,7 +882,7 @@ function addSourceItem(sourceId, at = null) {
     props.maxValue = {
       mode:
         known?.maxValue?.mode ??
-        (isPercentageSource(sourceId) ? "percent" : "flightMax")
+        (isPercentageSource(sourceId) ? "percent" : "flightMax"),
     };
   }
 
@@ -835,9 +926,7 @@ function duplicateItem(id) {
   // convenience shift one cell right when free.
   const covered = state.layout.items.some(
     (other) =>
-      other !== copy &&
-      other.col === copy.col &&
-      other.row === copy.row
+      other !== copy && other.col === copy.col && other.row === copy.row,
   );
 
   if (covered) {
@@ -876,7 +965,7 @@ const DERIVED_ENTRIES = [
   { id: "derived:current", label: "Current", kind: "number" },
   { id: "derived:maxCurrent", label: "Max Current", kind: "number" },
   { id: "derived:escTemp", label: "ESC Temp", kind: "number" },
-  { id: "derived:motorPct", label: "Motor %", kind: "number" }
+  { id: "derived:motorPct", label: "Motor %", kind: "number" },
 ];
 
 const RC_ENTRIES = [
@@ -884,7 +973,7 @@ const RC_ENTRIES = [
   { id: "field:rcCommand[1]", label: "Pitch" },
   { id: "field:rcCommand[2]", label: "Yaw" },
   { id: "field:rcCommand[3]", label: "Collective" },
-  { id: "field:rcCommand[4]", label: "Throttle" }
+  { id: "field:rcCommand[4]", label: "Throttle" },
 ];
 
 const RAW_SKIP = new Set([
@@ -894,7 +983,7 @@ const RAW_SKIP = new Set([
   "rcCommand[3]",
   "rcCommand[4]",
   "time",
-  "loopIteration"
+  "loopIteration",
 ]);
 
 function renderTelemetryPanel() {
@@ -909,14 +998,14 @@ function renderTelemetryPanel() {
       title: "FIELDS",
       entries: state.fields
         .filter((name) => !RAW_SKIP.has(name))
-        .map((name) => ({ id: `field:${name}`, label: name }))
-    }
+        .map((name) => ({ id: `field:${name}`, label: name })),
+    },
   ];
 
   for (const group of groups) {
     const entries = filter
       ? group.entries.filter((entry) =>
-          entry.label.toLowerCase().includes(filter)
+          entry.label.toLowerCase().includes(filter),
         )
       : group.entries;
 
@@ -1037,20 +1126,20 @@ const COLOR_PROPS = {
   stick: [
     ["boxColor", "Box"],
     ["crosshairColor", "Crosshair"],
-    ["dotColor", "Dot"]
+    ["dotColor", "Dot"],
   ],
   text: [
     ["labelColor", "Label color"],
     ["valueColor", "Value color"],
     ["cardColor", "Card color (none = transparent)"],
-    ["accentColor", "Accent stripe"]
+    ["accentColor", "Accent stripe"],
   ],
   bar: [
     ["labelColor", "Label color"],
     ["trackColor", "Track color"],
     ["fillColor", "Bar color"],
     ["cardColor", "Card color (none = transparent)"],
-    ["accentColor", "Accent stripe"]
+    ["accentColor", "Accent stripe"],
   ],
   donut: [
     ["labelColor", "Label color"],
@@ -1058,17 +1147,28 @@ const COLOR_PROPS = {
     ["trackColor", "Track color"],
     ["fillColor", "Bar color"],
     ["cardColor", "Card color (none = transparent)"],
-    ["accentColor", "Accent stripe"]
-  ]
+    ["accentColor", "Accent stripe"],
+  ],
 };
 
 const FONT_PROPS = {
-  text: [["labelSize", "Label size"], ["valueSize", "Value size"]],
+  text: [
+    ["labelSize", "Label size"],
+    ["valueSize", "Value size"],
+  ],
   bar: [["labelSize", "Label size"]],
-  donut: [["labelSize", "Label size"], ["valueSize", "Value size"]]
+  donut: [
+    ["labelSize", "Label size"],
+    ["valueSize", "Value size"],
+  ],
 };
 
-const TYPE_LABELS = { stick: "Stick Display", text: "Text", bar: "Progress Bar", donut: "Donut Chart" };
+const TYPE_LABELS = {
+  stick: "Stick Display",
+  text: "Text",
+  bar: "Progress Bar",
+  donut: "Donut Chart",
+};
 
 function refreshProperties() {
   els.propsBody.innerHTML = "";
@@ -1209,30 +1309,43 @@ const RC_OPTIONS = [
   { value: 1, label: "rcCommand[1] — Pitch" },
   { value: 2, label: "rcCommand[2] — Yaw" },
   { value: 3, label: "rcCommand[3] — Collective" },
-  { value: 4, label: "rcCommand[4] — Throttle" }
+  { value: 4, label: "rcCommand[4] — Throttle" },
 ];
 
 const SOURCE_OPTIONS = () => {
   const options = [{ value: "custom", label: "Custom text" }];
 
   for (const entry of DERIVED_ENTRIES) {
-    if (!entry.id.startsWith("derived:arm") && entry.id !== "derived:throttle" && entry.id !== "derived:motorOn") {
+    if (
+      !entry.id.startsWith("derived:arm") &&
+      entry.id !== "derived:throttle" &&
+      entry.id !== "derived:motorOn"
+    ) {
       options.push({ value: entry.id, label: entry.label });
     }
   }
 
   for (const name of state.fields) {
-    if (!RAW_SKIP.has(name)) options.push({ value: `field:${name}`, label: name });
+    if (!RAW_SKIP.has(name))
+      options.push({ value: `field:${name}`, label: name });
   }
 
   return options;
 };
 
 function buildStickProps(item, root) {
-  root.appendChild(checkbox("Axis caption", item.props.showCaption, (v) => updateProp(item, "showCaption", v)));
+  root.appendChild(
+    checkbox("Axis caption", item.props.showCaption, (v) =>
+      updateProp(item, "showCaption", v),
+    ),
+  );
 
-  const xSel = select(RC_OPTIONS, item.props.xChannel, (v) => updateProp(item, "xChannel", Number(v)));
-  const ySel = select(RC_OPTIONS, item.props.yChannel, (v) => updateProp(item, "yChannel", Number(v)));
+  const xSel = select(RC_OPTIONS, item.props.xChannel, (v) =>
+    updateProp(item, "xChannel", Number(v)),
+  );
+  const ySel = select(RC_OPTIONS, item.props.yChannel, (v) =>
+    updateProp(item, "yChannel", Number(v)),
+  );
 
   root.appendChild(field("X axis", xSel));
   root.appendChild(field("Y axis", ySel));
@@ -1241,10 +1354,10 @@ function buildStickProps(item, root) {
     [
       { value: "small", label: "Small (120px)" },
       { value: "med", label: "Medium (200px)" },
-      { value: "large", label: "Large (280px)" }
+      { value: "large", label: "Large (280px)" },
     ],
     item.props.size,
-    (v) => updateProp(item, "size", v)
+    (v) => updateProp(item, "size", v),
   );
 
   root.appendChild(field("Size", sizeSel));
@@ -1260,27 +1373,35 @@ function buildTextProps(item, root) {
     textarea.className = "fld";
     textarea.rows = 3;
     textarea.value = item.props.customText ?? "";
-    textarea.addEventListener("change", () => updateProp(item, "customText", textarea.value));
+    textarea.addEventListener("change", () =>
+      updateProp(item, "customText", textarea.value),
+    );
     root.appendChild(field("Text", textarea));
   } else {
-    const srcSel = select(SOURCE_OPTIONS(), item.props.source, (v) => updateProp(item, "source", v));
+    const srcSel = select(SOURCE_OPTIONS(), item.props.source, (v) =>
+      updateProp(item, "source", v),
+    );
 
     root.appendChild(field("Source", srcSel));
-    root.appendChild(checkbox("Show label", item.props.showLabel, (v) => updateProp(item, "showLabel", v)));
+    root.appendChild(
+      checkbox("Show label", item.props.showLabel, (v) =>
+        updateProp(item, "showLabel", v),
+      ),
+    );
 
     const alignSel = select(
       [
         { value: "stacked", label: "Label over value (centred)" },
-        { value: "inline", label: "Inline: label then value" }
+        { value: "inline", label: "Inline: label then value" },
       ],
       item.props.alignment,
-      (v) => updateProp(item, "alignment", v)
+      (v) => updateProp(item, "alignment", v),
     );
 
     root.appendChild(field("Layout", alignSel));
 
     const override = textInput(item.props.labelOverride ?? "", (v) =>
-      updateProp(item, "labelOverride", v === "" ? null : v)
+      updateProp(item, "labelOverride", v === "" ? null : v),
     );
 
     root.appendChild(field("Label override", override));
@@ -1288,32 +1409,57 @@ function buildTextProps(item, root) {
 }
 
 function buildBarProps(item, root) {
-  root.appendChild(field("Source", select(barDonutSources(), item.props.source, (v) => updateProp(item, "source", v))));
+  root.appendChild(
+    field(
+      "Source",
+      select(barDonutSources(), item.props.source, (v) =>
+        updateProp(item, "source", v),
+      ),
+    ),
+  );
   root.appendChild(
     field(
       "Orientation",
       select(
         [
           { value: "vertical", label: "Vertical" },
-          { value: "horizontal", label: "Horizontal" }
+          { value: "horizontal", label: "Horizontal" },
         ],
         item.props.orientation,
-        (v) => updateProp(item, "orientation", v)
-      )
-    )
+        (v) => updateProp(item, "orientation", v),
+      ),
+    ),
   );
-  root.appendChild(field("Thickness (px)", numberInput(item.props.width, 2, 2048, (v) => updateProp(item, "width", v))));
-  root.appendChild(field("Length (px)", numberInput(item.props.height, 2, 2048, (v) => updateProp(item, "height", v))));
-  root.appendChild(checkbox("Show label", item.props.showLabel, (v) => updateProp(item, "showLabel", v)));
+  root.appendChild(
+    field(
+      "Thickness (px)",
+      numberInput(item.props.width, 2, 2048, (v) =>
+        updateProp(item, "width", v),
+      ),
+    ),
+  );
+  root.appendChild(
+    field(
+      "Length (px)",
+      numberInput(item.props.height, 2, 2048, (v) =>
+        updateProp(item, "height", v),
+      ),
+    ),
+  );
+  root.appendChild(
+    checkbox("Show label", item.props.showLabel, (v) =>
+      updateProp(item, "showLabel", v),
+    ),
+  );
 
   if (item.props.showLabel) {
     root.appendChild(
       field(
         "Label override",
         textInput(item.props.labelOverride ?? "", (v) =>
-          updateProp(item, "labelOverride", v === "" ? null : v)
-        )
-      )
+          updateProp(item, "labelOverride", v === "" ? null : v),
+        ),
+      ),
     );
   }
 
@@ -1321,18 +1467,33 @@ function buildBarProps(item, root) {
 }
 
 function buildDonutProps(item, root) {
-  root.appendChild(field("Source", select(barDonutSources(), item.props.source, (v) => updateProp(item, "source", v))));
-  root.appendChild(checkbox("Show value in center", item.props.showValue, (v) => updateProp(item, "showValue", v)));
-  root.appendChild(checkbox("Show label", item.props.showLabel, (v) => updateProp(item, "showLabel", v)));
+  root.appendChild(
+    field(
+      "Source",
+      select(barDonutSources(), item.props.source, (v) =>
+        updateProp(item, "source", v),
+      ),
+    ),
+  );
+  root.appendChild(
+    checkbox("Show value in center", item.props.showValue, (v) =>
+      updateProp(item, "showValue", v),
+    ),
+  );
+  root.appendChild(
+    checkbox("Show label", item.props.showLabel, (v) =>
+      updateProp(item, "showLabel", v),
+    ),
+  );
 
   if (item.props.showLabel) {
     root.appendChild(
       field(
         "Label override",
         textInput(item.props.labelOverride ?? "", (v) =>
-          updateProp(item, "labelOverride", v === "" ? null : v)
-        )
-      )
+          updateProp(item, "labelOverride", v === "" ? null : v),
+        ),
+      ),
     );
   }
 
@@ -1340,10 +1501,10 @@ function buildDonutProps(item, root) {
     [
       { value: "small", label: "Small (120px)" },
       { value: "med", label: "Medium (200px)" },
-      { value: "large", label: "Large (280px)" }
+      { value: "large", label: "Large (280px)" },
     ],
     item.props.size,
-    (v) => updateProp(item, "size", v)
+    (v) => updateProp(item, "size", v),
   );
 
   root.appendChild(field("Size", sizeSel));
@@ -1356,11 +1517,13 @@ function buildMaxValue(item, root, percentage) {
     ? [{ value: "percent", label: "100% Max (percentage field)" }]
     : [
         { value: "flightMax", label: "Flight Maximum" },
-        { value: "dynamic", label: "Dynamic (grows as log plays)" }
+        { value: "dynamic", label: "Dynamic (grows as log plays)" },
       ];
 
-  const modeSel = select(modes, percentage ? "percent" : item.props.maxValue?.mode ?? "flightMax", (v) =>
-    updateProp(item, "maxValue", { mode: v })
+  const modeSel = select(
+    modes,
+    percentage ? "percent" : (item.props.maxValue?.mode ?? "flightMax"),
+    (v) => updateProp(item, "maxValue", { mode: v }),
   );
 
   root.appendChild(field("Max value", modeSel));
@@ -1370,7 +1533,8 @@ function barDonutSources() {
   const options = [];
 
   for (const entry of DERIVED_ENTRIES) {
-    if (entry.kind === "number") options.push({ value: entry.id, label: entry.label });
+    if (entry.kind === "number")
+      options.push({ value: entry.id, label: entry.label });
   }
 
   for (const name of state.fields) {
@@ -1383,7 +1547,10 @@ function barDonutSources() {
 }
 
 function isPercentageSource(sourceId) {
-  return sourceId === "derived:motorPct" || /^field:motor\[\d+\]$/.test(sourceId ?? "");
+  return (
+    sourceId === "derived:motorPct" ||
+    /^field:motor\[\d+\]$/.test(sourceId ?? "")
+  );
 }
 
 /* Colour sub-controls: picker + opacity, null = inherit. */
@@ -1401,7 +1568,7 @@ const SLOT_LABELS = {
   "donut.track": "Donut track",
   "donut.fill": "Donut fill",
   background: "Backdrop",
-  textShadow: "Text shadow"
+  textShadow: "Text shadow",
 };
 
 function buildColorSub(label, item, propKey) {
@@ -1456,7 +1623,10 @@ function buildColorProperty(parent, label, item, propKey) {
 
   opacity.addEventListener("input", () => {
     if (item.props[propKey]) {
-      item.props[propKey] = { hex: item.props[propKey].hex, alpha: Number(opacity.value) };
+      item.props[propKey] = {
+        hex: item.props[propKey].hex,
+        alpha: Number(opacity.value),
+      };
       paintSoon();
     }
   });
@@ -1483,12 +1653,53 @@ function buildColorProperty(parent, label, item, propKey) {
 function buildColorProps(item, root) {
   for (const [propKey, label] of COLOR_PROPS[item.type] ?? []) {
     buildColorProperty(root, label, item, propKey);
+
+    // A card's min-width only matters once the card exists;
+    // show it right under the card colour control.
+    if (propKey === "cardColor") {
+      buildCardMinWidthProperty(root, item);
+    }
   }
+}
+
+/** Min card width (px): keeps values inside the card bounds
+ * when live text would otherwise outgrow the measured box.
+ * Empty = auto-size from content (null). */
+function buildCardMinWidthProperty(root, item) {
+  const input = numberInput(
+    item.props.cardMinWidth,
+    0,
+    2048,
+    (v) =>
+      updateProp(
+        item,
+        "cardMinWidth",
+        v === null || Number.isNaN(v) ? null : Math.round(v),
+      ),
+    true,
+  );
+
+  input.placeholder = "auto";
+  input.disabled = !item.props.cardColor;
+  input.title = item.props.cardColor
+    ? "Minimum card width in px"
+    : "Enable a card color first";
+
+  root.appendChild(field("Card min width", input));
 }
 
 function buildFontSizeProperty(parent, label, item, propKey) {
   parent.appendChild(
-    field(label, numberInput(item.props[propKey], 8, 200, (v) => updateProp(item, propKey, v), true))
+    field(
+      label,
+      numberInput(
+        item.props[propKey],
+        8,
+        200,
+        (v) => updateProp(item, propKey, v),
+        true,
+      ),
+    ),
   );
 }
 
@@ -1501,9 +1712,17 @@ function buildFontSizes(item, root) {
 function updateProp(item, key, value) {
   // Percentage lock on bar/donut source changes (text items
   // carry no maxValue).
-  if (key === "source" && (item.type === "bar" || item.type === "donut") && item.props.maxValue) {
+  if (
+    key === "source" &&
+    (item.type === "bar" || item.type === "donut") &&
+    item.props.maxValue
+  ) {
     item.props.maxValue = {
-      mode: isPercentageSource(value) ? "percent" : item.props.maxValue?.mode === "percent" ? "flightMax" : item.props.maxValue?.mode ?? "flightMax"
+      mode: isPercentageSource(value)
+        ? "percent"
+        : item.props.maxValue?.mode === "percent"
+          ? "flightMax"
+          : (item.props.maxValue?.mode ?? "flightMax"),
     };
   }
 
@@ -1535,10 +1754,10 @@ function buildItemActions(item, root) {
       [
         { value: "text", label: "Text card" },
         { value: "bar", label: "Progress Bar" },
-        { value: "donut", label: "Donut Chart" }
+        { value: "donut", label: "Donut Chart" },
       ],
       item.type,
-      (v) => switchType(item, v)
+      (v) => switchType(item, v),
     );
 
     root.appendChild(field("Widget type", typeSel));
@@ -1550,7 +1769,7 @@ function buildItemActions(item, root) {
   row.append(
     make("Forward", () => reorderItem(item.id, 1)),
     make("Backward", () => reorderItem(item.id, -1)),
-    make("Duplicate", () => duplicateItem(item.id))
+    make("Duplicate", () => duplicateItem(item.id)),
   );
 
   const del = make("Delete item", () => deleteItem(item.id));
@@ -1572,7 +1791,7 @@ function switchType(item, nextType) {
   if (nextType !== "text") {
     fresh.source = oldProps.source ?? fresh.source;
     fresh.maxValue = {
-      mode: isPercentageSource(fresh.source) ? "percent" : "flightMax"
+      mode: isPercentageSource(fresh.source) ? "percent" : "flightMax",
     };
   } else if (oldProps.source && oldProps.source !== "custom") {
     fresh.source = oldProps.source;
@@ -1589,7 +1808,10 @@ function switchType(item, nextType) {
  * Boot + theme/font cards + customizer
  * ------------------------------------------------------ */
 
-function applyAccent(themeName, overrides = state.layout?.themeOverrides ?? {}) {
+function applyAccent(
+  themeName,
+  overrides = state.layout?.themeOverrides ?? {},
+) {
   if (!state.themeMaps) return;
 
   const map = state.themeMaps[themeName];
@@ -1669,7 +1891,7 @@ function paintStaticSwatch(canvas, themeName) {
 
   for (const box of [
     { x: 5, y: 5 },
-    { x: w - 45, y: 5 }
+    { x: w - 45, y: 5 },
   ]) {
     g.fillStyle = map["stick.box"];
     g.fillRect(box.x, box.y, 40, 40);
@@ -1708,6 +1930,7 @@ async function selectTheme(name) {
   markThemeSelection(name);
   buildColorGrid();
   applyAccent(name);
+  buildBackdropPicker();
   scheduleSync(0);
 }
 
@@ -1720,16 +1943,20 @@ function loadFontFaces(catalog) {
     const family = `overlay-${id}`;
     const face = new FontFace(family, `url(/fonts/${file})`);
 
-    face.load().then((loaded) => {
-      document.fonts.add(loaded);
-      for (const card of els.fontStack.children) {
-        if (card.dataset.font === id) {
-          card.querySelector(".font-name").style.fontFamily = `'${family}', monospace`;
+    face
+      .load()
+      .then((loaded) => {
+        document.fonts.add(loaded);
+        for (const card of els.fontStack.children) {
+          if (card.dataset.font === id) {
+            card.querySelector(".font-name").style.fontFamily =
+              `'${family}', monospace`;
+          }
         }
-      }
-    }).catch(() => {
-      // Card falls back to the console font; not fatal.
-    });
+      })
+      .catch(() => {
+        // Card falls back to the console font; not fatal.
+      });
   }
 }
 
@@ -1784,7 +2011,7 @@ const SLOT_ROWS = [
   ["bar.track", "Bar track"],
   ["bar.fill", "Bar fill"],
   ["donut.track", "Donut track"],
-  ["donut.fill", "Donut fill"]
+  ["donut.fill", "Donut fill"],
 ];
 
 function buildColorGrid() {
@@ -1840,8 +2067,16 @@ function onCanvasDims() {
 }
 
 function onGridDims() {
-  state.layout.grid.cols = clamp(Math.round(Number(els.gridCols.value)) || 12, 1, 48);
-  state.layout.grid.rows = clamp(Math.round(Number(els.gridRows.value)) || 6, 1, 27);
+  state.layout.grid.cols = clamp(
+    Math.round(Number(els.gridCols.value)) || 12,
+    1,
+    48,
+  );
+  state.layout.grid.rows = clamp(
+    Math.round(Number(els.gridRows.value)) || 6,
+    1,
+    27,
+  );
   scheduleSync(0);
 }
 
@@ -1858,6 +2093,7 @@ els.alphaToggle.addEventListener("change", () => {
   state.layout.alpha = els.alphaToggle.checked;
   els.alphaHint.hidden = false;
   updateOutputExtension();
+  syncPreviewControls();
   scheduleSync(0);
 });
 
@@ -1865,6 +2101,19 @@ els.shadowToggle.addEventListener("change", () => {
   state.layout.shadow = els.shadowToggle.checked;
   scheduleSync(0);
 });
+
+// The flattened .preview.mp4 only exists for alpha renders;
+// keep the switch and its hint honest when alpha is off.
+els.previewToggle.addEventListener("change", () => {
+  syncPreviewControls();
+});
+
+function syncPreviewControls() {
+  const alpha = state.layout?.alpha === true;
+
+  els.previewToggle.disabled = !alpha;
+  $("preview-hint").hidden = !alpha;
+}
 
 function updateOutputExtension() {
   const extension = state.layout.alpha ? "mov" : "mp4";
@@ -1977,7 +2226,8 @@ async function loadLog(path) {
     els.logPill.title = payload.file;
 
     // Telemetry entries: the first renderable flight's fields.
-    const first = payload.flights.find((f) => f.renderable) ?? payload.flights[0];
+    const first =
+      payload.flights.find((f) => f.renderable) ?? payload.flights[0];
 
     state.fields = first?.mainFields ?? [];
     renderTelemetryPanel();
@@ -1989,8 +2239,7 @@ async function loadLog(path) {
     renderFlights();
     renderFootFacts();
 
-    els.renderMsg.textContent =
-      `${payload.flightCount} flight(s) decoded — choose one to preview.`;
+    els.renderMsg.textContent = `${payload.flightCount} flight(s) decoded — choose one to preview.`;
   } catch (error) {
     els.renderMsg.textContent = `Could not read log: ${error.message}`;
   }
@@ -2055,7 +2304,7 @@ function selectFlight(flightNumber) {
   for (const row of els.flightList.children) {
     row.setAttribute(
       "aria-selected",
-      String(Number(row.dataset.flight) === flightNumber)
+      String(Number(row.dataset.flight) === flightNumber),
     );
   }
 
@@ -2082,7 +2331,7 @@ function updateFlightFacts(flight) {
     ["CRAFT", flight.craftName || "(unnamed)"],
     ["FW", flight.firmware || "(unknown)"],
     ["LOG START", flight.logStart || "—"],
-    ["FRAMES", `${flight.mainFrameCount} main · ${flight.slowFrameCount} slow`]
+    ["FRAMES", `${flight.mainFrameCount} main · ${flight.slowFrameCount} slow`],
   ];
 
   for (const [label, value] of facts) {
@@ -2112,7 +2361,10 @@ function updateOutputDefault() {
   if (!state.logPath || !state.flight) return;
 
   const leaf =
-    state.logPath.split(/[\\/]/).pop().replace(/\.[^.]+$/, "") || "log";
+    state.logPath
+      .split(/[\\/]/)
+      .pop()
+      .replace(/\.[^.]+$/, "") || "log";
 
   if (els.outputInput.dataset.touched !== "1") {
     els.outputInput.value = `out/${leaf}-flight${state.flight}-overlay.${state.layout.alpha ? "mov" : "mp4"}`;
@@ -2136,7 +2388,9 @@ els.fpsInput.addEventListener("change", () => {
 
 async function browseInto(path) {
   try {
-    renderBrowse(await getJson(`/api/browse?dir=${encodeURIComponent(path ?? "")}`));
+    renderBrowse(
+      await getJson(`/api/browse?dir=${encodeURIComponent(path ?? "")}`),
+    );
   } catch (error) {
     els.renderMsg.textContent = `Cannot open folder: ${error.message}`;
   }
@@ -2217,7 +2471,7 @@ function renderBrowse(listing) {
   } else {
     for (const dir of listing.directories) {
       els.browseDirs.appendChild(
-        browseEntry(`▸ ${dir.name}`, null, () => browseInto(dir.path))
+        browseEntry(`▸ ${dir.name}`, null, () => browseInto(dir.path)),
       );
     }
   }
@@ -2236,7 +2490,7 @@ function renderBrowse(listing) {
         browseEntry(file.name, formatBytes(file.size), () => {
           els.browseDialog.close();
           loadLog(file.path);
-        })
+        }),
       );
     }
   }
@@ -2280,7 +2534,7 @@ els.srcPanel.addEventListener("drop", async (event) => {
     const response = await fetch("/api/upload", {
       method: "POST",
       headers: { "Content-Type": "application/octet-stream" },
-      body: file
+      body: file,
     });
 
     const payload = await response.json().catch(() => ({}));
@@ -2339,6 +2593,8 @@ els.loadInput.addEventListener("change", async () => {
     markFontSelection(state.layout.font);
     buildColorGrid();
     applyAccent(state.layout.theme, state.layout.themeOverrides);
+    buildBackdropPicker();
+    syncPreviewControls();
 
     els.renderMsg.textContent =
       result.warnings.length > 0
@@ -2388,7 +2644,9 @@ els.renderBtn.addEventListener("click", async () => {
       flight: state.flight,
       fps: normalizeFps(els.fpsInput.value),
       layout: state.layout,
-      output: els.outputInput.value.trim()
+      output: els.outputInput.value.trim(),
+      // Alpha renders optionally skip the flattened .preview.mp4.
+      preview: els.previewToggle.checked !== false,
     });
 
     watchJob(payload.jobId);
@@ -2409,17 +2667,21 @@ function scheduleSyncNow() {
   clearTimeout(normalizeTimer);
   normalizeTimer = 0;
 
-  pendingSync = pendingSync ?? postJson("/api/layout/normalize", {
-    layout: state.layout
-  }).then((result) => {
-    state.layout = result.layout;
-    state.boxes = result.boxes;
-    syncLayoutInputs();
-    refreshProperties();
-    requestPreview();
-  }).finally(() => {
-    pendingSync = null;
-  });
+  pendingSync =
+    pendingSync ??
+    postJson("/api/layout/normalize", {
+      layout: state.layout,
+    })
+      .then((result) => {
+        state.layout = result.layout;
+        state.boxes = result.boxes;
+        syncLayoutInputs();
+        refreshProperties();
+        requestPreview();
+      })
+      .finally(() => {
+        pendingSync = null;
+      });
 
   return pendingSync;
 }
@@ -2429,7 +2691,9 @@ function watchJob(jobId) {
     eventSource.close();
   }
 
-  eventSource = new EventSource(`/api/jobs/${encodeURIComponent(jobId)}/events`);
+  eventSource = new EventSource(
+    `/api/jobs/${encodeURIComponent(jobId)}/events`,
+  );
 
   eventSource.onmessage = (event) => {
     const payload = JSON.parse(event.data);
@@ -2471,6 +2735,16 @@ function showDone(job) {
   els.renderMeterFill.style.width = "0%";
   els.renderMsg.textContent = `Done — ${job.frames} frames → ${job.output}`;
 
+  // No preview (skipped or opaque-less alpha): report the
+  // file location instead of opening a player that would
+  // choke on raw ProRes 4444.
+  if (!job.previewPath) {
+    els.renderMsg.textContent = job.layout?.alpha
+      ? `Done — ${job.frames} frames → ${job.output} (no preview; play the .mov in your editor)`
+      : `Done — ${job.frames} frames → ${job.output}`;
+    return;
+  }
+
   els.videoPath.textContent = job.output;
   els.videoDialog.showModal();
   els.renderMsg.textContent = "Loading video…";
@@ -2490,10 +2764,9 @@ function showDone(job) {
 
   function onReady() {
     cleanup();
-    els.renderMsg.textContent =
-      job.layout?.alpha
-        ? `Done — ${job.frames} frames → ${job.output} (preview below; the .mov carries the real alpha)`
-        : `Done — ${job.frames} frames → ${job.output}`;
+    els.renderMsg.textContent = job.layout?.alpha
+      ? `Done — ${job.frames} frames → ${job.output} (preview below; the .mov carries the real alpha)`
+      : `Done — ${job.frames} frames → ${job.output}`;
     player.play().catch(() => {
       // Autoplay may be refused; controls remain available.
     });
@@ -2513,7 +2786,9 @@ function showDone(job) {
 
 function showError(job) {
   els.renderMeter.hidden = true;
-  els.renderMsg.textContent = job.error ? `Render failed: ${job.error}` : "Render failed.";
+  els.renderMsg.textContent = job.error
+    ? `Render failed: ${job.error}`
+    : "Render failed.";
 }
 
 els.videoClose.addEventListener("click", () => {
@@ -2545,13 +2820,16 @@ async function boot() {
     markThemeSelection(state.layout.theme);
     buildColorGrid();
     applyAccent(state.layout.theme);
+    buildBackdropPicker();
 
     buildFontCards();
     loadFontFaces(serverState.fonts);
     markFontSelection(state.layout.font);
 
     els.ffmpegPill.dataset.state = serverState.ffmpeg ? "ok" : "missing";
-    els.ffmpegPill.textContent = serverState.ffmpeg ? "FFMPEG OK" : "FFMPEG NOT FOUND";
+    els.ffmpegPill.textContent = serverState.ffmpeg
+      ? "FFMPEG OK"
+      : "FFMPEG NOT FOUND";
 
     if (!serverState.ffmpeg) {
       els.renderBtn.disabled = true;
@@ -2563,6 +2841,7 @@ async function boot() {
     renderTelemetryPanel();
     renderFootFacts();
     syncLayoutInputs();
+    syncPreviewControls();
     requestPreview();
   } catch (error) {
     els.ffmpegPill.dataset.state = "missing";

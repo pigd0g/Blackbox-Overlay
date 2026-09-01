@@ -64,8 +64,35 @@ export function clamp(value) {
 /**
  * Per-axis scales for a flight's rcCommand columns.
  * Returns null when the log carries no rcCommand telemetry.
+ *
+ * Memoized per flight object: decoded flights are immutable,
+ * and the render loop calls this once per painted frame —
+ * without the cache every frame would re-scan the whole log.
  */
+const scalesCache = new WeakMap();
+
 export function detectScales(flight) {
+  if (!flight || typeof flight !== "object") {
+    return null;
+  }
+
+  if (scalesCache.has(flight)) {
+    return scalesCache.get(flight);
+  }
+
+  const binding = computeDetectScales(flight);
+
+  scalesCache.set(flight, binding);
+
+  return binding;
+}
+
+/** Test hook: drop memoized bindings. */
+export function clearStickCaches() {
+  scalesCache.clear();
+}
+
+function computeDetectScales(flight) {
   if (!flight || flight.mainFieldNames.length === 0) {
     return null;
   }

@@ -23,13 +23,17 @@
 // ======================================================
 
 import {
+  mkdirSync,
   readdirSync,
   statSync,
   existsSync,
-  readFileSync
+  readFileSync,
+  writeFileSync,
+  unlinkSync
 } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { homedir, tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 
 import { decodeBblFile, looksLikeBinaryBbl } from "../bbl/bblDecoder.js";
 import { summarizeFlight } from "../summarize.js";
@@ -81,6 +85,234 @@ export function normalizeFps(value) {
 
 export function tempDir() {
   return tmpdir();
+}
+
+// ------------------------------------------------------
+// Layout library (presets + user layouts)
+// ------------------------------------------------------
+
+// Bundled presets live with the source (src/presets); user
+// layouts land in <cwd>/layouts/ (gitignored, like out/).
+const PRESETS_DIR = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "presets"
+);
+
+export const LAYOUTS_DIRNAME = "layouts";
+
+export const THUMB_MAX_W = 160;
+
+/** <cwd>/layouts/ — created only when saving. */
+function userLayoutsDir() {
+  return join(process.cwd(), LAYOUTS_DIRNAME);
+}
+
+function layoutsDir() {
+  const dir = userLayoutsDir();
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+/** Humanize a filename stem: "my-cool_layout" → "My Cool Layout". */
+export function layoutDisplayName(stem) {
+  return String(stem)
+    .replace(/[-_]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Sanitize a user-supplied name into a safe filename stem.
+ * Returns null when the name is empty or path-hostile. */
+export function sanitizeLayoutName(name) {
+  const trimmed = String(name ?? "").trim();
+
+  if (!trimmed || /^\.+$/.test(trimmed)) {
+    return null;
+  }
+
+  if (/[/\\:*?"<>|]/.test(trimmed) || /\.\./.test(trimmed)) {
+    return null;
+  }
+
+  const stem = trimmed.replace(/\s+/g, " ").slice(0, 80).trim();
+
+  return stem.length > 0 ? stem : null;
+}
+
+function layoutFilePath(id, dir) {
+  const stem = sanitizeLayoutName(id);
+
+  if (!stem) {
+    return null;
+  }
+
+  const target = resolve(dir, `${stem}.gimbal.json`);
+
+  if (target !== dir && !target.startsWith(dir + sep)) {
+    return null;
+  }
+
+  return target;
+}
+
+function readLayoutFile(filePath) {
+  const parsed = JSON.parse(readFileSync(filePath, "utf8"));
+
+  return normalizeLayout(parsed).layout;
+}
+
+/** Built-in presets: discovered from src/presets/*.json. */
+export function listPresetLayouts() {
+  const presets = [];
+
+  let entries = [];
+
+  try {
+    entries = readdirSync(PRESETS_DIR);
+  } catch {
+    return presets;
+  }
+
+  for (const entry of entries) {
+    if (!entry.toLowerCase().endsWith(".json")) {
+      continue;
+    }
+
+    const id = entry.replace(/\.json$/i, "");
+    const idSafe = layoutFilePath(id, PRESETS_DIR) ? id : null;
+
+    if (idSafe) {
+      presets.push({ id: idSafe, name: layoutDisplayName(idSafe) });
+    }
+  }
+
+  presets.sort((a, b) => a.name.localeCompare(b.name));
+
+  return presets;
+}
+
+/** User layouts: <cwd>/layouts/*.gimbal.json (listed without creating). */
+export function listUserLayouts() {
+  const dir = userLayoutsDir();
+  const user = [];
+
+  let entries = [];
+
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return user;
+  }
+
+  for (const entry of entries) {
+    if (!entry.toLowerCase().endsWith(".gimbal.json")) {
+      continue;
+    }
+
+    const id = entry.slice(0, -".gimbal.json".length);
+    const filePath = layoutFilePath(id, dir);
+
+    if (!filePath || resolve(filePath) !== resolve(dir, entry)) {
+      continue;
+    }
+
+    let mtime = 0;
+
+    try {
+      mtime = statSync(filePath).mtimeMs;
+    } catch {
+      // Unreadable: still list it, no timestamp.
+    }
+
+    user.push({
+      id,
+      name: layoutDisplayName(id),
+      mtime
+    });
+  }
+
+  user.sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { numeric: true })
+  );
+
+  return user;
+}
+
+export function listLayouts() {
+  return { presets: listPresetLayouts(), user: listUserLayouts() };
+}
+
+/** Load a layout doc by id (user layouts first, then presets). */
+export function loadLayoutDoc(id) {
+  const userPath = layoutFilePath(id, userLayoutsDir());
+
+  if (userPath && existsSync(userPath)) {
+    return readLayoutFile(userPath);
+  }
+
+  const presetStem = sanitizeLayoutName(id);
+  const presetPath =
+    presetStem &&
+    resolve(PRESETS_DIR, `${presetStem}.json`);
+
+  if (
+    presetPath &&
+    presetPath.startsWith(resolve(PRESETS_DIR) + sep) &&
+    existsSync(presetPath)
+  ) {
+    return readLayoutFile(presetPath);
+  }
+
+  throw new Error(`No such layout: ${id}`);
+}
+
+/**
+ * Save a user layout. The doc is normalized first (the
+ * layout schema stays the single validation authority).
+ * Returns { id, name, layout }.
+ */
+export function saveUserLayout(name, rawDoc) {
+  const stem = sanitizeLayoutName(name);
+
+  if (!stem) {
+    const error = new Error("Layout name is required.");
+    error.code = "badname";
+    throw error;
+  }
+
+  const { layout } = normalizeLayout(rawDoc);
+
+  const dir = layoutsDir();
+  const target = layoutFilePath(stem, dir);
+
+  if (!target) {
+    const error = new Error("Invalid layout name.");
+    error.code = "badname";
+    throw error;
+  }
+
+  writeFileSync(target, JSON.stringify(layout, null, 2));
+
+  return {
+    id: stem,
+    name: layoutDisplayName(stem),
+    layout
+  };
+}
+
+export function deleteUserLayout(id) {
+  const dir = userLayoutsDir();
+  const filePath = layoutFilePath(id, dir);
+
+  if (!filePath || !existsSync(filePath)) {
+    throw new Error(`No such layout: ${id}`);
+  }
+
+  unlinkSync(filePath);
+
+  return { deleted: id };
 }
 
 // ------------------------------------------------------
@@ -294,12 +526,13 @@ export function stateCatalog() {
 /**
  * One painted frame for direct canvas putImageData. Paints
  * at full layout resolution, then box-downsamples to the
- * preview cap (≤960px wide stays 1:1). Works with no
- * flight — placeholder state.
+ * preview cap (≤960px wide stays 1:1). `maxWidth` lowers
+ * the cap for card thumbnails (clamped 64–PREVIEW_MAX_W).
+ * Works with no flight — placeholder state.
  *
  * Returns { width, height, layoutWidth, layoutHeight, pixels }.
  */
-export function renderPreviewFrame({ layout: rawLayout, file, filePath, flight, t }) {
+export function renderPreviewFrame({ layout: rawLayout, file, filePath, flight, t, maxWidth }) {
   const normalized = normalizeLayout(rawLayout);
   const layout = normalized.layout;
   const boxes = normalized.boxes;
@@ -326,10 +559,16 @@ export function renderPreviewFrame({ layout: rawLayout, file, filePath, flight, 
     shadow: layout.shadow === true
   });
 
+  const cap = Math.min(
+    PREVIEW_MAX_W,
+    Math.max(64, Math.round(Number(maxWidth) || PREVIEW_MAX_W))
+  );
+
   const scaled = downscaleFrame(
     frame,
     layout.canvas.width,
-    layout.canvas.height
+    layout.canvas.height,
+    cap
   );
 
   return {
@@ -378,15 +617,15 @@ function overrideTheme(layout) {
   );
 }
 
-// Box-filter downsample to ≤960px wide (or 1:1 when already
-// small). Returns { width, height, pixels }.
-function downscaleFrame(frame, srcW, srcH) {
-  if (srcW <= PREVIEW_MAX_W) {
+/** Box-filter downsample to ≤cap px wide (or 1:1 when already
+ * small). Returns { width, height, pixels }. */
+function downscaleFrame(frame, srcW, srcH, cap = PREVIEW_MAX_W) {
+  if (srcW <= cap) {
     return { width: srcW, height: srcH, pixels: frame };
   }
 
   // Proportional height, even.
-  const scale = PREVIEW_MAX_W / srcW;
+  const scale = cap / srcW;
   const dstW = evenFloor(Math.round(srcW * scale));
   const dstH = evenFloor(Math.round(srcH * scale));
 

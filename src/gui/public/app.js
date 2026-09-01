@@ -20,31 +20,40 @@
 
 const $ = (id) => document.getElementById(id);
 
-const PREVIEW_BG = "#D8ECD0"; // pastel sage — preview only
 const GRID_DASH = [6, 6];
 const GRID_COLOR = "rgba(32, 44, 38, 0.35)";
 const HOVER_OUTLINE = "rgba(32, 44, 38, 0.55)";
 const SELECT_OUTLINE = "#1a6fb0";
 
 // Browser-only preview backdrops. "theme" tracks the layout
-// theme's background slot; the fixed swatches give editors
-// light/dark checking surfaces. None of these reach the
-// video pipeline (alpha renders stay transparent).
+// theme's background slot (including live Backdrop overrides);
+// the fixed swatches give editors light/dark checking
+// surfaces. None of these reach the video pipeline (alpha
+// renders stay transparent).
 const BACKDROP_PRESETS = {
   theme: null, // resolved from the active theme at draw time
   light: "#ffffff",
   dark: "#202225",
-  default: PREVIEW_BG,
 };
-const BACKDROP_DEFAULT_KEY = "default";
+const BACKDROP_DEFAULT_KEY = "theme";
 
 const els = {
   // header
-  saveBtn: $("save-btn"),
-  loadBtn: $("load-btn"),
-  loadInput: $("load-input"),
   logPill: $("log-pill"),
   ffmpegPill: $("ffmpeg-pill"),
+  // layout library
+  presetStack: $("preset-stack"),
+  userStack: $("user-stack"),
+  userTitle: $("user-title"),
+  layoutsHint: $("layouts-hint"),
+  layoutNewBtn: $("layout-new-btn"),
+  layoutSaveBtn: $("layout-save-btn"),
+  layoutDeleteBtn: $("layout-delete-btn"),
+  saveDialog: $("save-dialog"),
+  saveClose: $("save-close"),
+  saveForm: $("save-form"),
+  saveName: $("save-name"),
+  saveCancel: $("save-cancel"),
   // source rail
   browseBtn: $("browse-btn"),
   srcPanel: $("src-panel"),
@@ -134,6 +143,13 @@ const state = {
   previewPending: false,
   // Browser-only preview backdrop key (BACKDROP_PRESETS).
   backdrop: BACKDROP_DEFAULT_KEY,
+  // Layout library: { presets: [{id,name}], user: [{id,name,mtime}] }
+  layouts: { presets: [], user: [] },
+  // Active layout identity: { id, user } or null for the
+  // untitled default doc.
+  activeLayout: null,
+  // Canonical JSON of the last saved/loaded doc (dirty check).
+  savedDoc: null,
   // transient drag state
   drag: null,
 };
@@ -276,6 +292,8 @@ function scheduleSync(delay = 120) {
 
       syncLayoutInputs();
       refreshProperties();
+      refreshLayoutsHint();
+      updateLayoutButtons();
       requestPreview();
     } catch (error) {
       els.renderMsg.textContent = error.message;
@@ -364,14 +382,16 @@ function previewBackdropColor() {
 
   const key = state.backdrop;
 
-  if (key === "theme") {
-    return (
-      state.themeMaps?.[state.layout.theme]?.background ??
-      BACKDROP_PRESETS[BACKDROP_DEFAULT_KEY]
-    );
+  if (key !== "theme") {
+    return BACKDROP_PRESETS[key] ?? null;
   }
 
-  return BACKDROP_PRESETS[key] ?? BACKDROP_PRESETS[BACKDROP_DEFAULT_KEY];
+  // Theme backdrop: the slot value, with live themeOverrides
+  // applied so a changed Backdrop colour updates the preview
+  // immediately. Falls back to the base theme background.
+  const overrides = state.layout.themeOverrides ?? {};
+
+  return overrides.background?.hex ?? state.themeMaps?.[state.layout.theme]?.background ?? null;
 }
 
 /** Paint the backdrop swatches (theme swatch tracks the
@@ -381,8 +401,9 @@ function buildBackdropPicker() {
 
   const backdrop = previewBackdropColor();
   const themeBg =
+    state.layout?.themeOverrides?.background?.hex ??
     state.themeMaps?.[state.layout?.theme]?.background ??
-    BACKDROP_PRESETS[BACKDROP_DEFAULT_KEY];
+    BACKDROP_PRESETS.dark;
 
   for (const button of els.bgPicker.querySelectorAll(".bg-swatch")) {
     const key = button.dataset.bg;
@@ -396,8 +417,7 @@ function buildBackdropPicker() {
   // wherever the alpha frame is transparent. The bezel
   // follows so the whole monitor reads as one surface.
   els.screen.style.background = backdrop;
-  els.screenFrame.style.background =
-    backdrop || BACKDROP_PRESETS[BACKDROP_DEFAULT_KEY];
+  els.screenFrame.style.background = backdrop ?? themeBg;
 }
 
 els.bgPicker?.addEventListener("click", (event) => {
@@ -2033,6 +2053,10 @@ function buildColorGrid() {
     swatch.addEventListener("input", () => {
       state.layout.themeOverrides[slot] = { hex: swatch.value, alpha: 100 };
       applyAccent(state.layout.theme, state.layout.themeOverrides);
+      // Live Backdrop edits re-skin the monitor immediately.
+      if (slot === "background") {
+        buildBackdropPicker();
+      }
       paintSoon();
     });
 
@@ -2050,6 +2074,7 @@ els.themeReset.addEventListener("click", () => {
   state.layout.themeOverrides = {};
   buildColorGrid();
   applyAccent(state.layout.theme, {});
+  buildBackdropPicker();
   scheduleSync(0);
 });
 
@@ -2550,63 +2575,358 @@ els.srcPanel.addEventListener("drop", async (event) => {
 });
 
 /* ------------------------------------------------------
- * Save / Load layout JSON
+ * Layout library: presets + saved layouts
  * ------------------------------------------------------ */
 
-els.saveBtn.addEventListener("click", () => {
-  const doc = JSON.stringify(state.layout, null, 2);
-  const blob = new Blob([doc], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
+const LAYOUT_STORAGE_KEY = "rfbvo.activeLayout";
+const THUMB_MAX_W = 160;
 
-  anchor.href = url;
-  anchor.download = "overlay.gimbal.json";
-  anchor.click();
-  URL.revokeObjectURL(url);
-});
+function layoutDirty() {
+  return state.savedDoc !== null && JSON.stringify(state.layout) !== state.savedDoc;
+}
 
-els.loadBtn.addEventListener("click", () => els.loadInput.click());
+function markLayoutSaved() {
+  state.savedDoc = JSON.stringify(state.layout);
+  updateLayoutButtons();
+}
 
-els.loadInput.addEventListener("change", async () => {
-  const file = els.loadInput.files?.[0];
+function updateLayoutButtons() {
+  const dirty = layoutDirty();
+  const user = state.activeLayout?.user === true;
 
-  if (!file) return;
+  els.layoutSaveBtn.textContent = dirty ? "Save•" : "Save";
+  els.layoutSaveBtn.title = user
+    ? "Save changes to this layout"
+    : "Save the current layout (asks for a name)";
+  els.layoutDeleteBtn.disabled = !user;
+  els.layoutDeleteBtn.title = user
+    ? `Delete "${state.activeLayout.name}"`
+    : "Only your saved layouts can be deleted";
+}
+
+function layoutsHintText() {
+  if (!state.activeLayout) {
+    return "Untitled layout — pick a preset or save yours.";
+  }
+
+  const where = state.activeLayout.user ? "My layouts" : "Preset";
+  const suffix = layoutDirty() ? " — unsaved changes" : "";
+
+  return `${where}: ${state.activeLayout.name}${suffix}`;
+}
+
+function refreshLayoutsHint() {
+  els.layoutsHint.textContent = layoutsHintText();
+}
+
+function markLayoutSelection() {
+  for (const stack of [els.presetStack, els.userStack]) {
+    for (const card of stack.children) {
+      const active =
+        state.activeLayout &&
+        card.dataset.layoutId === state.activeLayout.id &&
+        card.dataset.layoutUser === String(state.activeLayout.user === true);
+
+      card.setAttribute("aria-checked", String(active === true));
+    }
+  }
+}
+
+/** Apply a normalized layout doc to the whole editor. */
+function applyLayoutDoc(layout, boxes) {
+  state.layout = layout;
+  state.boxes = boxes ?? {};
+  state.selectedId = null;
+
+  els.canvasW.value = String(state.layout.canvas.width);
+  els.canvasH.value = String(state.layout.canvas.height);
+  els.gridCols.value = String(state.layout.grid.cols);
+  els.gridRows.value = String(state.layout.grid.rows);
+  els.alphaToggle.checked = state.layout.alpha;
+  els.shadowToggle.checked = state.layout.shadow;
+
+  markThemeSelection(state.layout.theme);
+  markFontSelection(state.layout.font);
+  buildColorGrid();
+  applyAccent(state.layout.theme, state.layout.themeOverrides);
+  buildBackdropPicker();
+  syncPreviewControls();
+
+  refreshProperties();
+  requestPreview();
+}
+
+async function fetchLayoutEnvelope(id) {
+  return getJson(`/api/layouts/${encodeURIComponent(id)}`);
+}
+
+/** Switch to a library entry, guarding unsaved changes. */
+async function selectLayout(id, user) {
+  const same =
+    state.activeLayout &&
+    state.activeLayout.id === id &&
+    state.activeLayout.user === user;
+
+  if (same && !layoutDirty()) return;
+
+  if (layoutDirty() && !confirm("Discard unsaved changes to the current layout?")) {
+    return;
+  }
 
   try {
-    const parsed = JSON.parse(await file.text());
+    const envelope = await fetchLayoutEnvelope(id);
 
-    // Server normalize is the validation authority.
-    const result = await postJson("/api/layout/normalize", { layout: parsed });
+    state.activeLayout = { id, user, name: cardNameFor(id, user) };
+    applyLayoutDoc(envelope.layout, envelope.boxes);
+    markLayoutSaved();
+    rememberActiveLayout();
+    markLayoutSelection();
+    refreshLayoutsHint();
+    updateLayoutButtons();
 
-    state.layout = result.layout;
-    state.boxes = result.boxes;
-    state.selectedId = null;
-
-    els.canvasW.value = String(state.layout.canvas.width);
-    els.canvasH.value = String(state.layout.canvas.height);
-    els.gridCols.value = String(state.layout.grid.cols);
-    els.gridRows.value = String(state.layout.grid.rows);
-    els.alphaToggle.checked = state.layout.alpha;
-    els.shadowToggle.checked = state.layout.shadow;
-
-    markThemeSelection(state.layout.theme);
-    markFontSelection(state.layout.font);
-    buildColorGrid();
-    applyAccent(state.layout.theme, state.layout.themeOverrides);
-    buildBackdropPicker();
-    syncPreviewControls();
-
-    els.renderMsg.textContent =
-      result.warnings.length > 0
-        ? `Loaded (with warnings: ${result.warnings.length})`
-        : "Layout loaded.";
-
-    requestPreview();
-    refreshProperties();
+    els.renderMsg.textContent = `Loaded layout: ${state.activeLayout.name}`;
   } catch (error) {
     els.renderMsg.textContent = `Could not load layout: ${error.message}`;
-  } finally {
-    els.loadInput.value = "";
+  }
+}
+
+function cardNameFor(id, user) {
+  const list = user ? state.layouts.user : state.layouts.presets;
+  const entry = list.find((item) => item.id === id);
+
+  return entry ? entry.name : id;
+}
+
+function renderLayoutCard(entry, user) {
+  const card = document.createElement("button");
+
+  card.type = "button";
+  card.className = "layout-card";
+  card.setAttribute("role", "option");
+  card.setAttribute("aria-checked", "false");
+  card.dataset.layoutId = entry.id;
+  card.dataset.layoutUser = String(user === true);
+  card.title = user
+    ? `${entry.name} (your saved layout)`
+    : `${entry.name} (built-in preset)`;
+
+  const canvas = document.createElement("canvas");
+
+  canvas.width = THUMB_MAX_W;
+  canvas.height = 90;
+  card.appendChild(canvas);
+
+  const label = document.createElement("span");
+
+  label.className = "layout-name";
+  label.textContent = entry.name;
+  card.appendChild(label);
+
+  card.addEventListener("click", () => selectLayout(entry.id, user));
+  (user ? els.userStack : els.presetStack).appendChild(card);
+
+  paintLayoutThumb(canvas, entry.id);
+}
+
+async function paintLayoutThumb(canvas, id) {
+  try {
+    const envelope = await fetchLayoutEnvelope(id);
+    const response = await fetch("/api/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ layout: envelope.layout, maxWidth: THUMB_MAX_W }),
+    });
+
+    if (!response.ok) return;
+
+    const width = Number(response.headers.get("X-Frame-Width"));
+    const height = Number(response.headers.get("X-Frame-Height"));
+    const pixels = new Uint8ClampedArray(await response.arrayBuffer());
+
+    canvas.width = width;
+    canvas.height = height;
+    canvas
+      .getContext("2d")
+      .putImageData(new ImageData(pixels, width, height), 0, 0);
+  } catch {
+    // Card keeps its empty placeholder canvas.
+  }
+}
+
+async function refreshLayoutList() {
+  state.layouts = await getJson("/api/layouts");
+
+  els.presetStack.innerHTML = "";
+  els.userStack.innerHTML = "";
+
+  for (const entry of state.layouts.presets) {
+    renderLayoutCard(entry, false);
+  }
+
+  for (const entry of state.layouts.user) {
+    renderLayoutCard(entry, true);
+  }
+
+  els.userTitle.hidden = state.layouts.user.length === 0;
+  markLayoutSelection();
+  refreshLayoutsHint();
+  updateLayoutButtons();
+}
+
+function rememberActiveLayout() {
+  try {
+    if (state.activeLayout) {
+      localStorage.setItem(
+        LAYOUT_STORAGE_KEY,
+        JSON.stringify(state.activeLayout)
+      );
+    } else {
+      localStorage.removeItem(LAYOUT_STORAGE_KEY);
+    }
+  } catch {
+    // Storage unavailable (private mode) — restore simply skips.
+  }
+}
+
+function recallActiveLayout() {
+  try {
+    const raw = localStorage.getItem(LAYOUT_STORAGE_KEY);
+
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+/* Save flow: overwrite user layouts in place; everything
+ * else (presets, untitled docs) asks for a name first. */
+
+function openSaveDialog(defaultName = "") {
+  els.saveName.value = defaultName;
+  els.saveDialog.showModal();
+  els.saveName.focus();
+  els.saveName.select();
+}
+
+els.saveClose.addEventListener("click", () => els.saveDialog.close());
+els.saveCancel.addEventListener("click", () => els.saveDialog.close());
+
+els.saveForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const name = els.saveName.value.trim();
+
+  if (!name) {
+    els.saveName.focus();
+    return;
+  }
+
+  const exists = state.layouts.user.some(
+    (entry) => entry.id.toLowerCase() === name.toLowerCase()
+  );
+
+  if (
+    exists &&
+    state.activeLayout?.id !== name &&
+    !confirm(`A layout named "${name}" already exists. Overwrite it?`)
+  ) {
+    return;
+  }
+
+  await saveCurrentLayout(name);
+  els.saveDialog.close();
+});
+
+async function saveCurrentLayout(name) {
+  try {
+    await scheduleSyncNow();
+
+    const result = await postJson("/api/layouts", {
+      name,
+      layout: state.layout,
+    });
+
+    state.activeLayout = { id: result.id, user: true, name: result.name };
+    markLayoutSaved();
+    rememberActiveLayout();
+
+    await refreshLayoutList();
+
+    els.renderMsg.textContent = `Saved layout: ${result.name}`;
+  } catch (error) {
+    els.renderMsg.textContent = `Could not save layout: ${error.message}`;
+  }
+}
+
+els.layoutSaveBtn.addEventListener("click", async () => {
+  if (!state.layout) return;
+
+  // Untouched builtin or untitled doc: always ask for a name.
+  if (state.activeLayout?.user !== true) {
+    openSaveDialog(state.activeLayout?.name ?? "");
+    return;
+  }
+
+  if (layoutDirty()) {
+    await saveCurrentLayout(state.activeLayout.name);
+    return;
+  }
+
+  // Clean user layout: allow re-save (rename via the dialog).
+  openSaveDialog(state.activeLayout.name);
+});
+
+els.layoutDeleteBtn.addEventListener("click", async () => {
+  const active = state.activeLayout;
+
+  if (!active || active.user !== true) return;
+
+  if (!confirm(`Delete layout "${active.name}"? This cannot be undone.`)) {
+    return;
+  }
+
+  try {
+    await fetch(
+      `/api/layouts/${encodeURIComponent(active.id)}`,
+      { method: "DELETE" }
+    );
+
+    state.activeLayout = null;
+    state.savedDoc = null;
+    rememberActiveLayout();
+
+    await refreshLayoutList();
+
+    els.renderMsg.textContent = `Deleted layout: ${active.name}`;
+  } catch (error) {
+    els.renderMsg.textContent = `Could not delete layout: ${error.message}`;
+  }
+});
+
+els.layoutNewBtn.addEventListener("click", async () => {
+  if (layoutDirty() && !confirm("Discard unsaved changes to the current layout?")) {
+    return;
+  }
+
+  const result = await postJson("/api/layout/normalize", {
+    layout: defaultLayoutObject(),
+  });
+
+  state.activeLayout = null;
+  applyLayoutDoc(result.layout, result.boxes);
+  markLayoutSaved();
+  rememberActiveLayout();
+  markLayoutSelection();
+  refreshLayoutsHint();
+  updateLayoutButtons();
+
+  els.renderMsg.textContent = "New empty layout.";
+});
+
+window.addEventListener("beforeunload", (event) => {
+  if (layoutDirty()) {
+    event.preventDefault();
+    event.returnValue = "";
   }
 });
 
@@ -2816,6 +3136,10 @@ async function boot() {
     state.fonts.default = serverState.fonts.default || "vt323";
     state.layout.font = serverState.fonts.default || "vt323";
 
+    // Snapshot AFTER the server-side font default lands, or
+    // the app would boot believing it has unsaved changes.
+    state.savedDoc = JSON.stringify(state.layout);
+
     buildThemeCards();
     markThemeSelection(state.layout.theme);
     buildColorGrid();
@@ -2842,6 +3166,23 @@ async function boot() {
     renderFootFacts();
     syncLayoutInputs();
     syncPreviewControls();
+
+    await refreshLayoutList();
+
+    // Restore the last-used layout (when it still exists).
+    const remembered = recallActiveLayout();
+
+    if (remembered?.id) {
+      const list = remembered.user ? state.layouts.user : state.layouts.presets;
+
+      if (list.some((entry) => entry.id === remembered.id)) {
+        await selectLayout(remembered.id, remembered.user === true);
+      }
+    } else {
+      refreshLayoutsHint();
+      updateLayoutButtons();
+    }
+
     requestPreview();
   } catch (error) {
     els.ffmpegPill.dataset.state = "missing";

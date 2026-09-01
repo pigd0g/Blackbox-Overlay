@@ -19,9 +19,6 @@
       <h1 class="brand">ROTORFLIGHT<span class="brand-thin">—OVERLAY</span></h1>
     </div>
     <div class="head-actions">
-      <button type="button" class="btn" id="save-btn">Save layout</button>
-      <button type="button" class="btn" id="load-btn">Load layout…</button>
-      <input type="file" id="load-input" accept=".json,application/json" hidden>
       <span class="pill" id="log-pill" hidden></span>
       <span class="pill pill-state" id="ffmpeg-pill" data-state="unknown">FFMPEG …</span>
     </div>
@@ -91,10 +88,9 @@
           <span class="switch-label">Grid</span>
         </label>
         <div class="bg-picker" id="bg-picker" role="radiogroup" aria-label="Preview backdrop">
-          <button type="button" class="bg-swatch" data-bg="theme" role="radio" aria-checked="false" title="Backdrop: theme"></button>
+          <button type="button" class="bg-swatch" data-bg="theme" role="radio" aria-checked="true" title="Backdrop: theme background"></button>
           <button type="button" class="bg-swatch" data-bg="light" role="radio" aria-checked="false" title="Backdrop: light"></button>
           <button type="button" class="bg-swatch" data-bg="dark" role="radio" aria-checked="false" title="Backdrop: dark"></button>
-          <button type="button" class="bg-swatch" data-bg="default" role="radio" aria-checked="true" title="Backdrop: default (pastel)"></button>
         </div>
         <span class="warn-inline" id="canvas-warn" hidden></span>
       </div>
@@ -124,6 +120,22 @@
           <output class="t-value" id="t-value">00:00.0</output>
         </div>
       </div>
+
+      <!-- Layout library: presets + saved layouts, above themes -->
+      <section class="look-pane layouts-pane" aria-label="Layout library">
+        <div class="layouts-head">
+          <h3 class="group-title">LAYOUT</h3>
+          <div class="layouts-actions">
+            <button type="button" class="btn btn-tiny" id="layout-new-btn" title="Start a fresh empty layout">New</button>
+            <button type="button" class="btn btn-tiny" id="layout-save-btn" title="Save the current layout">Save</button>
+            <button type="button" class="btn btn-tiny" id="layout-delete-btn" title="Delete the selected user layout" disabled>Delete</button>
+          </div>
+        </div>
+        <div class="layouts-hint" id="layouts-hint">Pick a preset or one of your saved layouts.</div>
+        <div class="layout-stack" id="preset-stack" role="listbox" aria-label="Built-in layout presets"></div>
+        <h3 class="group-title layout-user-title" id="user-title" hidden>MY LAYOUTS</h3>
+        <div class="layout-stack" id="user-stack" role="listbox" aria-label="Your saved layouts"></div>
+      </section>
 
       <!-- Theme + font selection sits ABOVE the color customizer -->
       <section class="look-pane" aria-label="Theme and font">
@@ -202,6 +214,25 @@
     </div>
   </footer>
 </div>
+
+<!-- ============ Save-layout dialog ============ -->
+<dialog id="save-dialog" class="save-dlg" aria-labelledby="save-title">
+  <header class="browse-head">
+    <h2 id="save-title">Save layout</h2>
+    <button type="button" class="btn btn-icon" id="save-close" aria-label="Close save dialog">✕</button>
+  </header>
+  <form method="dialog" id="save-form">
+    <label class="save-row" for="save-name">
+      <span class="lbl">NAME</span>
+      <input class="fld" id="save-name" type="text" spellcheck="false" autocomplete="off" maxlength="80" placeholder="My layout">
+    </label>
+    <p class="out-hint" id="save-hint">Saved to the <code>layouts/</code> folder next to <code>out/</code>.</p>
+    <div class="save-actions">
+      <button type="button" class="btn" id="save-cancel">Cancel</button>
+      <button type="submit" class="btn btn-render" id="save-confirm">Save</button>
+    </div>
+  </form>
+</dialog>
 
 <!-- ============ Browse dialog ============ -->
 <dialog id="browse-dialog" class="browse" aria-labelledby="browse-title">

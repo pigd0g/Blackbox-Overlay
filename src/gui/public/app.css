@@ -23,9 +23,6 @@
   --dot: #ee4266;
   --dot-soft: rgba(238, 66, 102, 0.14);
 
-  /* The preview-only pastel green (never enters video). */
-  --preview-green: #D8ECD0;
-
   /* Facility fonts: DIN-flavored shell, mono for numbers. */
   --font-plate: "Bahnschrift", "DIN Alternate", "Franklin Gothic Medium", "Arial Narrow", sans-serif;
   --font-mono: "Cascadia Mono", "Consolas", "SF Mono", "Menlo", monospace;
@@ -419,6 +416,62 @@ html, body {
 .look-pane-row .theme-stack,
 .look-pane-row .font-stack { margin-top: 2px; }
 
+/* Layout library (presets + saved layouts) */
+.layouts-pane .group-title { margin: 0; }
+.layouts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.layouts-actions { display: flex; gap: 6px; }
+.layouts-hint {
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin: 0 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.layout-stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.layout-user-title { margin: 8px 0 2px; }
+
+.layout-card {
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 172px;
+}
+.layout-card[aria-checked="true"] {
+  border-color: var(--dot);
+  box-shadow: 0 0 0 2px var(--dot-soft);
+}
+.layout-card canvas {
+  border-radius: 4px;
+  display: block;
+  max-width: 100%;
+  background: var(--well);
+}
+.layout-name {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .output-pane {
   border-top: 1px solid var(--rule-soft);
   padding-top: 6px;
@@ -519,7 +572,7 @@ html, body {
    viewport-relative height, so any resolution fits without
    overflowing. */
 .screen-frame {
-  background: var(--preview-green);
+  background: var(--well);
   border-radius: 8px;
   overflow: hidden;
   display: flex;
@@ -829,6 +882,22 @@ dialog::backdrop { background: rgba(15, 18, 20, 0.55); }
   border-radius: 8px;
 }
 .video-path { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-soft); }
+
+/* Save-layout dialog */
+.save-dlg { max-width: min(420px, 88vw); }
+.save-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.save-row .fld { flex: 1; }
+.save-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
 
 /* Alpha checkerboard (transparent layouts preview over the
    pastel green; the checker communicates keyed alpha inside

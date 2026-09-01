@@ -16,6 +16,10 @@
 //   POST /api/log                      describe a log
 //   POST /api/layout/normalize         validate + measure
 //   POST /api/preview                  frame for a layout
+//   GET  /api/layouts                  preset + user layout list
+//   GET  /api/layouts/:id              one layout doc
+//   POST /api/layouts                  save a user layout
+//   DELETE /api/layouts/:id            delete a user layout
 //   POST /api/render                   start a render job
 //   GET  /api/jobs/:id[/events]        job status / SSE
 //   GET  /api/media?path=              finished render
@@ -42,7 +46,11 @@ import {
   ffmpegAvailable,
   resolveOutputPath,
   isCompletedOutput,
-  tempDir
+  tempDir,
+  listLayouts,
+  loadLayoutDoc,
+  saveUserLayout,
+  deleteUserLayout
 } from "./api.js";
 
 const PUBLIC_DIR = join(
@@ -339,6 +347,40 @@ async function handleApi(req, res, url) {
     writeFileSync(target, buffer);
 
     return sendJson(res, 201, { path: target });
+  }
+
+  if (req.method === "GET" && pathname === "/api/layouts") {
+    return sendJson(res, 200, listLayouts());
+  }
+
+  const layoutIdMatch = pathname.match(/^\/api\/layouts\/([^/]+)$/);
+
+  if (req.method === "GET" && layoutIdMatch) {
+    try {
+      return sendJson(res, 200, normalizeLayoutDoc(loadLayoutDoc(decodeURIComponent(layoutIdMatch[1]))));
+    } catch (error) {
+      return sendError(res, 404, error.message);
+    }
+  }
+
+  if (req.method === "DELETE" && layoutIdMatch) {
+    try {
+      return sendJson(res, 200, deleteUserLayout(decodeURIComponent(layoutIdMatch[1])));
+    } catch (error) {
+      return sendError(res, 404, error.message);
+    }
+  }
+
+  if (req.method === "POST" && pathname === "/api/layouts") {
+    const body = await readBody(req);
+
+    try {
+      return sendJson(res, 201, saveUserLayout(body.name, body.layout ?? body));
+    } catch (error) {
+      const status = error.code === "badname" ? 400 : 500;
+
+      return sendError(res, status, error.message, error.code);
+    }
   }
 
   if (req.method === "POST" && pathname === "/api/render") {

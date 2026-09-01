@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — GUI SERVER SMOKE TESTS
+// RotorFlight-Blackbox-Video-Overlay — GUI SERVER SMOKE TESTS (v2)
 // ======================================================
 //
 // Boots the real GUI server on an ephemeral port and walks
@@ -12,8 +12,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { readFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 const FIXTURE = join(
@@ -83,6 +82,30 @@ after(() => {
   }
 });
 
+// A canonical small layout for endpoint tests.
+function testLayout(overrides = {}) {
+  return {
+    version: 2,
+    canvas: { width: 400, height: 240 },
+    grid: { cols: 4, rows: 2 },
+    alpha: true,
+    shadow: false,
+    theme: "default",
+    font: "vt323",
+    themeOverrides: overrides.themeOverrides ?? {},
+    items: [
+      { id: "t-a", type: "stick", col: 0, row: 0,
+        props: { size: "med", xChannel: 0, yChannel: 1, showCaption: false,
+                 boxColor: null, crosshairColor: null, dotColor: null } },
+      { id: "t-b", type: "text", col: 2, row: 0,
+        props: { source: "derived:rpm", showLabel: true, alignment: "stacked",
+                 labelSize: null, labelColor: null, valueSize: null,
+                 valueColor: null, cardColor: null, accentColor: null } }
+    ],
+    ...overrides
+  };
+}
+
 test("serves the console shell", async () => {
   if (!hasFixture) return;
 
@@ -119,97 +142,21 @@ test("blocks path escapes outside public/", async () => {
   assert.equal(response.status, 403);
 });
 
-test("state reports themes and ffmpeg availability", async () => {
+test("state reports themes, fonts, ffmpeg, and the default layout", async () => {
   if (!hasFixture) return;
 
-  const payload = await (await fetch(`${base}/api/state`)).json();
-
-  assert.equal(typeof payload.ffmpeg, "boolean");
-  assert.ok(Array.isArray(payload.themes.names));
-  assert.ok(payload.themes.names.length >= 6);
-  assert.ok(Array.isArray(payload.themes.keys));
-  assert.equal(payload.themes.keys.length, 16);
-  assert.match(payload.themes.themes.default.dot, /^#[0-9a-f]{6}$/i);
-  assert.match(payload.themes.themes.default.barMotor, /^#[0-9a-f]{6}$/i);
-  assert.match(payload.themes.themes.light.dot, /^#[0-9a-f]{6}$/i);
-});
-
-test("state carries the font catalog with vt323 default", async () => {
-  if (!hasFixture) return;
-
-  const { existsSync } = await import("node:fs");
-  const fontsDir = join(import.meta.dirname, "..", "fonts");
-
-  if (!existsSync(join(fontsDir, "VT323", "VT323-Regular.ttf"))) {
-    return; // fonts pruned; catalog shape is covered by unit tests
-  }
-
-  const payload = await (await fetch(`${base}/api/state`)).json();
-
-  assert.ok(Array.isArray(payload.fonts.ids));
-  assert.ok(payload.fonts.ids.includes("vt323"));
-  assert.ok(payload.fonts.ids.includes("bitmap"));
-  assert.equal(payload.fonts.default, "vt323");
-  assert.equal(payload.fonts.fonts.vt323.name, "VT323");
-  assert.match(payload.fonts.fonts.vt323.weights["400"], /^fonts\//);
-});
-
-test("font files are served with the right media type", async () => {
-  if (!hasFixture) return;
-
-  const { existsSync } = await import("node:fs");
-  const fontPath = join(import.meta.dirname, "..", "fonts", "VT323", "VT323-Regular.ttf");
-
-  if (!existsSync(fontPath)) {
-    return;
-  }
-
-  const response = await fetch(`${base}/fonts/VT323/VT323-Regular.ttf`);
+  const response = await fetch(`${base}/api/state`);
+  const payload = await response.json();
 
   assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type"), /font\/ttf/);
-  assert.ok((await response.arrayBuffer()).byteLength > 10_000);
-});
-
-test("font file routes refuse path escapes", async () => {
-  if (!hasFixture) return;
-
-  const response = await fetch(`${base}/fonts/..%2f..%2fpackage.json`);
-
-  assert.equal(response.status, 403);
-});
-
-test("preview honors the font option", async () => {
-  if (!hasFixture) return;
-
-  const { existsSync } = await import("node:fs");
-
-  if (!existsSync(join(import.meta.dirname, "..", "fonts"))) {
-    return;
-  }
-
-  const probe = async (font) => {
-    const response = await fetch(`${base}/api/preview`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        file: FIXTURE,
-        flight: 1,
-        t: 1.5,
-        theme: "default",
-        ...(font ? { font } : {})
-      })
-    });
-
-    assert.equal(response.status, 200);
-
-    return Buffer.from(await response.arrayBuffer());
-  };
-
-  const vt323 = await probe("vt323");
-  const geist = await probe("geist");
-
-  assert.notDeepEqual(vt323, geist, "fonts must paint different frames");
+  assert.equal(typeof payload.ffmpeg, "boolean");
+  assert.deepEqual(payload.themes.names, [
+    "default", "light", "gunmetal", "charcoal", "slate", "lime"
+  ]);
+  assert.ok(payload.themes.maps.default["stick.dot"], "theme map carries dot");
+  assert.ok(payload.fonts.fonts.vt323, "font catalog present");
+  assert.equal(payload.defaultLayout.version, 2);
+  assert.ok(payload.defaultLayout.canvas.width > 0);
 });
 
 test("browse lists directories and .bbl files", async () => {
@@ -224,7 +171,7 @@ test("browse lists directories and .bbl files", async () => {
   assert.ok(payload.files.some((file) => file.name.endsWith(".bbl")));
 });
 
-test("log endpoint summarizes flights", async () => {
+test("log endpoint summarizes flights with renderability", async () => {
   if (!hasFixture) return;
 
   const response = await fetch(`${base}/api/log`, {
@@ -242,66 +189,168 @@ test("log endpoint summarizes flights", async () => {
 
   assert.equal(first.flight, 1);
   assert.equal(first.renderable, true);
-  assert.ok(first.videoDurationSeconds > 0);
+  assert.ok(first.durationSeconds > 0);
   assert.ok(first.mainFields.length > 0);
 });
 
-test("preview returns a RGBA frame with dimensions", async () => {
+test("layout normalize validates, clamps, and measures", async () => {
   if (!hasFixture) return;
 
-  const response = await fetch(`${base}/api/preview`, {
+  const raw = testLayout();
+
+  // Inject junk: unknown type, unknown prop, out-of-bounds.
+  raw.items.push({ id: "junk", type: "sparkline", col: 0, row: 0, props: {} });
+  raw.items.push({ id: "t-b2", type: "text", col: 99, row: 99,
+    props: { source: "derived:rpm", bogusProp: 1 } });
+  raw.canvas.width = 333; // odd → rounds down to even
+
+  const response = await fetch(`${base}/api/layout/normalize`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ file: FIXTURE, flight: 1, t: 1.5, theme: "gunmetal" })
+    body: JSON.stringify({ layout: raw })
   });
 
+  const payload = await response.json();
+
   assert.equal(response.status, 200);
-  assert.equal(response.headers.get("X-Frame-Width"), "800");
-  assert.equal(response.headers.get("X-Frame-Height"), "262");
+  assert.equal(payload.layout.canvas.width, 332);
 
-  const buffer = Buffer.from(await response.arrayBuffer());
+  // Junk item dropped; survives-props normalized.
+  assert.equal(payload.layout.items.some((i) => i.id === "junk"), false);
 
-  assert.equal(buffer.length, 800 * 262 * 4);
+  const textItem = payload.layout.items.find((i) => i.id === "t-b2");
 
-  // RGBA: alpha channel is 255 every fourth byte (sampled).
-  for (const index of [3, 4003, 10003]) {
-    assert.equal(buffer[index], 255);
-  }
+  assert.ok(textItem, "unknown props don't drop otherwise-valid items");
+  assert.equal("bogusProp" in textItem.props, false);
+  assert.ok(textItem.col <= payload.layout.grid.cols - 1, "clamped into grid");
+
+  // Boxes come back per item.
+  assert.ok(payload.boxes["t-a"].width > 0);
+
+  assert.ok(payload.warnings.length > 0, "warnings reported");
 });
 
-test("preview with alpha leaves the background transparent", async () => {
+test("preview returns a RGBA frame with layout + payload dimensions", async () => {
   if (!hasFixture) return;
 
   const response = await fetch(`${base}/api/preview`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      layout: testLayout(),
       file: FIXTURE,
       flight: 1,
-      t: 1.5,
-      theme: "gunmetal",
-      alpha: true
+      t: 1.5
     })
   });
 
   assert.equal(response.status, 200);
-  assert.equal(response.headers.get("X-Frame-Width"), "800");
-  assert.equal(response.headers.get("X-Frame-Height"), "262");
+  assert.equal(response.headers.get("X-Frame-Width"), "400");
+  assert.equal(response.headers.get("X-Frame-Height"), "240");
+  assert.equal(response.headers.get("X-Layout-Width"), "400");
 
   const buffer = Buffer.from(await response.arrayBuffer());
 
-  // Top-left corner stays transparent; a gimbal-box pixel
-  // (first gimbal center-ish) stays opaque.
-  const alphaAt = (x, y) => buffer[(y * 800 + x) * 4 + 3];
-
-  assert.equal(alphaAt(2, 2), 0);
-
-  // The left gimbal spans 192..392 x 32..232: its center is
-  // inside the box.
-  assert.equal(alphaAt(292, 132), 255);
+  assert.equal(buffer.length, 400 * 240 * 4);
 });
 
-test("preview honors per-key theme overrides", async () => {
+test("preview works with no log (placeholder state)", async () => {
+  if (!hasFixture) return;
+
+  const response = await fetch(`${base}/api/preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ layout: testLayout() })
+  });
+
+  assert.equal(response.status, 200);
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+
+  // Stick box corner is opaque #404040 even with no flight;
+  // a far region stays transparent (alpha on).
+  const alphaAt = (x, y) => buffer[(y * 400 + x) * 4 + 3];
+
+  assert.equal(alphaAt(210, 190), 0, "far region transparent");
+  assert.equal(alphaAt(10, 10), 255, "stick box painted");
+});
+
+test("preview downsamples large canvases to the 960px cap", async () => {
+  if (!hasFixture) return;
+
+  const response = await fetch(`${base}/api/preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      layout: testLayout({ canvas: { width: 1920, height: 1080 } }),
+      file: FIXTURE,
+      flight: 1,
+      t: 1.5
+    })
+  });
+
+  assert.equal(response.status, 200);
+
+  const width = Number(response.headers.get("X-Frame-Width"));
+  const height = Number(response.headers.get("X-Frame-Height"));
+  const layoutW = Number(response.headers.get("X-Layout-Width"));
+
+  assert.equal(layoutW, 1920);
+  assert.equal(width, 960);
+  assert.equal(height, 540);
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+
+  assert.equal(buffer.length, 960 * 540 * 4);
+});
+
+test("preview leaves the background transparent with alpha on", async () => {
+  if (!hasFixture) return;
+
+  const response = await fetch(`${base}/api/preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      layout: testLayout(),
+      file: FIXTURE,
+      flight: 1,
+      t: 1.5
+    })
+  });
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+
+  // The stick (200px med, top-left anchored at cell 0,0)
+  // paints its box; a far corner stays transparent (alpha on).
+  const alphaAt = (x, y) => buffer[(y * 400 + x) * 4 + 3];
+
+  assert.equal(alphaAt(150 + 60, 190), 0, "far region transparent");
+  assert.equal(alphaAt(10, 10), 255, "stick box painted");
+});
+
+test("opaque preview fills the theme background", async () => {
+  if (!hasFixture) return;
+
+  const layout = testLayout();
+  layout.alpha = false;
+
+  const response = await fetch(`${base}/api/preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ layout, file: FIXTURE, flight: 1, t: 1.5 })
+  });
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  const alphaAt = (x, y) => buffer[(y * 400 + x) * 4 + 3];
+
+  // Default theme background #C6D8D3, fully opaque.
+  assert.equal(alphaAt(2, 2), 255);
+  assert.equal(buffer[0], 0xc6);
+  assert.equal(buffer[1], 0xd8);
+  assert.equal(buffer[2], 0xd3);
+});
+
+test("preview honors path-keyed theme overrides", async () => {
   if (!hasFixture) return;
 
   const probe = async (overrides) => {
@@ -309,18 +358,16 @@ test("preview honors per-key theme overrides", async () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        layout: testLayout(overrides ? { themeOverrides: overrides } : {}),
         file: FIXTURE,
         flight: 1,
-        t: 1.5,
-        theme: "default",
-        ...(overrides ? { themeOverrides: overrides } : {})
+        t: 1.5
       })
     });
 
     const buffer = Buffer.from(await response.arrayBuffer());
 
-    // The stick dot at t=1.5s sits somewhere inside the left
-    // gimbal — compare the count of exact dot-colored pixels.
+    // Count exact dot-colored pixels.
     let dotish = 0;
 
     for (let i = 0; i < buffer.length; i += 4) {
@@ -333,10 +380,34 @@ test("preview honors per-key theme overrides", async () => {
   };
 
   const baseline = await probe(null);
-  const overridden = await probe({ dot: "#00FF88" });
+  const overridden = await probe({ "stick.dot": "#00FF88" });
 
   assert.ok(baseline > 0, "default dot should be present");
   assert.equal(overridden, 0, "overridden dot color replaces #EE4266");
+});
+
+test("preview differentiates fonts", async () => {
+  if (!hasFixture) return;
+
+  const probe = async (font) => {
+    const layout = testLayout();
+    layout.font = font;
+
+    const response = await fetch(`${base}/api/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ layout, file: FIXTURE, flight: 1, t: 1.5 })
+    });
+
+    assert.equal(response.status, 200);
+
+    return Buffer.from(await response.arrayBuffer());
+  };
+
+  const vt323 = await probe("vt323");
+  const geist = await probe("geist");
+
+  assert.notDeepEqual(vt323, geist, "fonts must paint different frames");
 });
 
 test("preview rejects unknown flights", async () => {
@@ -345,7 +416,7 @@ test("preview rejects unknown flights", async () => {
   const response = await fetch(`${base}/api/preview`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ file: FIXTURE, flight: 999, t: 0, theme: "default" })
+    body: JSON.stringify({ layout: testLayout(), file: FIXTURE, flight: 999, t: 0 })
   });
 
   assert.equal(response.status, 400);
@@ -353,26 +424,6 @@ test("preview rejects unknown flights", async () => {
   const payload = await response.json();
 
   assert.match(payload.error, /Flight 999 not found/);
-});
-
-test("trace returns downsampled collective points", async () => {
-  if (!hasFixture) return;
-
-  const response = await fetch(`${base}/api/trace`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ file: FIXTURE, flight: 1 })
-  });
-
-  const payload = await response.json();
-
-  assert.equal(response.status, 200);
-  assert.ok(payload.points.length > 50);
-  assert.ok(payload.points.length <= 1201);
-
-  for (const [, y] of payload.points.slice(0, 10)) {
-    assert.ok(y >= -1 && y <= 1);
-  }
 });
 
 /**
@@ -412,9 +463,6 @@ async function consumeSse(url, onEvent, timeoutMs = 120_000) {
 
         for (const line of chunk.split("\n")) {
           if (line.startsWith("data: ")) {
-            // onEvent returns true to mean "stop reading" —
-            // used to abort right after a terminal event,
-            // like a browser closing the stream.
             if (onEvent(JSON.parse(line.slice(6))) === true) {
               reader.cancel().catch(() => {});
               return;
@@ -437,9 +485,11 @@ test("render job runs end-to-end with SSE progress and downloadable media", asyn
     return; // CI/test boxes without ffmpeg still validate the API surface.
   }
 
-  // Render outputs always land in <cwd>/out/ — the name is
-  // all the client controls.
-  const output = "gui-test-theme-overrides.mp4";
+  const layout = testLayout();
+  layout.theme = "charcoal";
+  layout.themeOverrides = { "stick.dot": "#00FF88" };
+
+  const output = "gui-test-v2-overlay.mp4";
 
   try {
     const startResponse = await fetch(`${base}/api/render`, {
@@ -448,9 +498,8 @@ test("render job runs end-to-end with SSE progress and downloadable media", asyn
       body: JSON.stringify({
         path: FIXTURE,
         flight: 1,
-        fps: 30,
-        theme: "charcoal",
-        themeOverrides: { dot: "#00FF88", barMotor: "#FF8800" },
+        fps: 10,
+        layout,
         output
       })
     });
@@ -463,7 +512,7 @@ test("render job runs end-to-end with SSE progress and downloadable media", asyn
       consumeSse(`${base}/api/jobs/${jobId}/events`, (event) => {
         if (event.type === "done") {
           resolvePromise(event.job);
-          return true; // stop reading, like the browser does
+          return true;
         } else if (event.type === "error") {
           reject(new Error(event.job.error || "render failed"));
           return true;
@@ -475,12 +524,6 @@ test("render job runs end-to-end with SSE progress and downloadable media", asyn
     assert.equal(finalJob.state, "done");
     assert.ok(finalJob.frames > 100);
     assert.ok(existsSync(finalJob.output));
-
-    // The overrides ride along on the job snapshot.
-    assert.deepEqual(finalJob.themeOverrides, {
-      dot: "#00FF88",
-      barMotor: "#FF8800"
-    });
 
     const media = await fetch(
       `${base}/api/media?path=${encodeURIComponent(finalJob.output)}`
@@ -494,13 +537,9 @@ test("render job runs end-to-end with SSE progress and downloadable media", asyn
     assert.ok(bytes.length > 10_000, "mp4 should have real content");
     assert.deepEqual(bytes.slice(4, 8).toString(), "ftyp");
   } finally {
-    rmSync(finalJobOutput(), { recursive: true, force: true });
+    rmSync(join(process.cwd(), "out", output), { force: true });
   }
 });
-
-function finalJobOutput() {
-  return join(process.cwd(), "out", "gui-test-theme-overrides.mp4");
-}
 
 test("media endpoint refuses paths that never rendered", async () => {
   if (!hasFixture) return;
@@ -519,7 +558,8 @@ test("server survives SSE close after the render settles", async () => {
 
   if (!state.ffmpeg) return;
 
-  const output = "sse-close-alpha.mp4";
+  const layout = testLayout({ alpha: true });
+  const output = "sse-close-v2-overlay";
 
   try {
     const startResponse = await fetch(`${base}/api/render`, {
@@ -528,9 +568,8 @@ test("server survives SSE close after the render settles", async () => {
       body: JSON.stringify({
         path: FIXTURE,
         flight: 1,
-        fps: 30,
-        theme: "slate",
-        alpha: true,
+        fps: 10,
+        layout,
         output
       })
     });
@@ -539,16 +578,9 @@ test("server survives SSE close after the render settles", async () => {
 
     const { jobId } = await startResponse.json();
 
-    // Wait for the done event, then abort the stream — the
-    // browser's EventSource/fetch always closes right after
-    // it sees a terminal event. Previously this crashed the
-    // server (unsubscribe touched nulled activeJob).
     const finalJob = await new Promise((resolvePromise, rejectPromise) => {
-      let failed = false;
-
       consumeSse(`${base}/api/jobs/${jobId}/events`, (event) => {
         if (event.type === "error") {
-          failed = true;
           rejectPromise(new Error(event.job.error || "render failed"));
           return true;
         }
@@ -562,21 +594,14 @@ test("server survives SSE close after the render settles", async () => {
 
     // Alpha renders must land as .mov (ProRes 4444).
     assert.match(finalJob.output, /\.mov$/);
-    assert.equal(finalJob.alpha, true);
     assert.ok(existsSync(finalJob.output));
 
-    // Give the server a beat to run the close handler that
-    // used to throw.
     await new Promise((r) => setTimeout(r, 500));
 
-    // The crash killed the whole process; if the state
-    // endpoint still answers, the fix holds.
     const probe = await fetch(`${base}/api/state`);
 
     assert.equal(probe.status, 200);
 
-    // Finished jobs stay queryable even after activeJob is
-    // cleared — late status polls and media fetches work.
     const status = await fetch(`${base}/api/jobs/${jobId}`);
 
     assert.equal(status.status, 200);
@@ -585,6 +610,7 @@ test("server survives SSE close after the render settles", async () => {
 
     assert.equal(snapshot.state, "done");
   } finally {
-    // Nothing to clean: outputs live in <cwd>/out/.
+    rmSync(join(process.cwd(), "out", `${output}.mov`), { force: true });
+    rmSync(join(process.cwd(), "out", `${output}.preview.mp4`), { force: true });
   }
 });

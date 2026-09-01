@@ -1,24 +1,29 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — VIDEO RENDER ORCHESTRATION
+// RotorFlight-Blackbox-Video-Overlay — VIDEO RENDER ORCHESTRATION (v2)
 // ======================================================
 //
-// Decodes a flight, samples its main frames in real time
-// (frame i = flight time i / fps), paints each sample as a
-// gimbal-stick frame, and pipes everything into ffmpeg.
+// Renders a decoded flight through the layout pipeline:
+// samples the flight in real time (frame i = flight time
+// i / fps), builds the scene state, paints each moment via
+// scenePainter at the LAYOUT's canvas resolution, and pipes
+// everything into ffmpeg.
 //
-// Timing scales with the requested fps: any fps plays back
-// at true flight speed, higher fps just adds smoothness.
+// Alpha renders (layout.alpha === true, the default) write
+// ProRes 4444 .mov plus a browser-playable flattened
+// .preview.mp4 (checkerboard composite); opaque renders are
+// H.264 .mp4 filled with the theme background.
 //
 // ======================================================
 
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { WIDTH, HEIGHT, paintStickFrame } from "./gimbalFrame.js";
 import { VideoWriter, checkFfmpegAvailable } from "./videoWriter.js";
 import { createFlightSampler } from "./frameSampler.js";
-import { resolveTheme, applyThemeOverrides } from "./themes.js";
-import { resolveFont } from "./fonts.js";
+import { createFieldStats } from "./layout/fieldStats.js";
+import { buildSceneState } from "./layout/sceneState.js";
+import { paintScene } from "./layout/scenePainter.js";
+import { resolveTheme, mergeThemeOverrides } from "./themes.js";
 
 export const DEFAULT_FPS = 30;
 
@@ -31,8 +36,8 @@ const PREVIEW_CHECKER_B = [236, 239, 242]; // #ECEFF2
 
 /**
  * Default output path next to the log: alpha renders land
- * as <logBase>-sticks.mov (ProRes 4444), otherwise
- * <logBase>-sticks.mp4.
+ * as <logBase>-overlay.mov (ProRes 4444), otherwise
+ * <logBase>-overlay.mp4.
  */
 export function defaultVideoPath(logFilePath, alpha = false) {
   const dot = logFilePath.lastIndexOf(".");
@@ -42,7 +47,7 @@ export function defaultVideoPath(logFilePath, alpha = false) {
       ? logFilePath.slice(0, dot)
       : logFilePath;
 
-  return `${base}-sticks.${alpha ? "mov" : "mp4"}`;
+  return `${base}-overlay.${alpha ? "mov" : "mp4"}`;
 }
 
 /**
@@ -80,11 +85,11 @@ function compositeOverCheckerboard(frame, checker) {
   return frame;
 }
 
-function buildCheckerboard() {
-  const checker = new Uint8Array(WIDTH * HEIGHT * 4);
+function buildCheckerboard(width, height) {
+  const checker = new Uint8Array(width * height * 4);
 
-  for (let y = 0; y < HEIGHT; y += 1) {
-    for (let x = 0; x < WIDTH; x += 1) {
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
       const oddSquare =
         (Math.floor(x / PREVIEW_CHECKER_SIZE) +
           Math.floor(y / PREVIEW_CHECKER_SIZE)) %
@@ -92,7 +97,7 @@ function buildCheckerboard() {
         1;
 
       const color = oddSquare ? PREVIEW_CHECKER_A : PREVIEW_CHECKER_B;
-      const offset = (y * WIDTH + x) * 4;
+      const offset = (y * width + x) * 4;
 
       checker[offset] = color[0];
       checker[offset + 1] = color[1];
@@ -105,55 +110,66 @@ function buildCheckerboard() {
 }
 
 /**
- * Render a decoded flight to a stick-position video.
- * Opaque renders are H.264 .mp4; transparent-background
- * renders are ProRes 4444 .mov (alpha-capable).
+ * Render a decoded flight through a layout to video.
  *
  * @param {object}  flight          decoded flight from decodeBblFile()
  * @param {string}  outputPath      destination .mp4 or .mov
  * @param {object}  [options]
+ * @param {object}  [options.layout]    normalized layout doc
+ *                  (canvas/grid/alpha/shadow/theme/items);
+ *                  a missing layout renders an empty canvas
  * @param {number}  [options.fps]   output frame rate (default 30)
- * @param {string}  [options.theme] color theme name (themes.js)
- * @param {object}  [options.themeOverrides] per-key hex color
- *                  overrides applied over the theme
- * @param {string}  [options.font]  overlay font id (fonts.js,
- *                  default vt323); validated up front so a
- *                  typo fails before any work
- * @param {boolean} [options.alpha] transparent background,
- *                  ProRes 4444 output (default false); when
- *                  on, a browser-playable
- *                  <name>.preview.mp4 (frames flattened over
- *                  a checkerboard) is written next to the
- *                  .mov — browsers can't decode ProRes.
- * @param {boolean} [options.shadow] draw the theme's text
- *                  drop shadow (default OFF)
  * @param {(msg: string) => void} [options.onProgress]
  * @returns {Promise<{frames: number, fps: number, durationSeconds: number}>}
  */
-export async function renderStickVideo(flight, outputPath, options = {}) {
+export async function renderLayoutVideo(flight, outputPath, options = {}) {
+  const layout = options.layout;
   const fps = options.fps ?? DEFAULT_FPS;
-  const alpha = options.alpha === true;
-  const theme = applyThemeOverrides(
-    resolveTheme(options.theme),
-    options.themeOverrides
-  );
-  const font = resolveFont(options.font); // early validation
+  const alpha = layout.alpha === true;
 
   if (!Number.isFinite(fps) || fps <= 0) {
-    throw new Error(`--fps must be a positive number, got ${fps}`);
+    throw new Error(`fps must be a positive number, got ${fps}`);
   }
 
-  const sampler = createFlightSampler(flight);
+  // ProRes 4444 does not live in an .mp4 container; guard
+  // the combination early with a clear error instead of
+  // letting ffmpeg fail cryptically at mux time.
+  if (alpha && outputPath.toLowerCase().endsWith(".mp4")) {
+    throw new Error("Alpha renders need a .mov output path (ProRes 4444), not .mp4.");
+  }
 
-  if (!sampler) {
+  // The sticks need rcCommand telemetry; a layout without
+  // stick items can render flights the v1 pipeline rejected.
+  const sampler = createFlightSampler(flight);
+  const needsSticks = layout.items.some((item) => item.type === "stick");
+
+  if (!sampler && needsSticks) {
     throw new Error(
-      "This flight has no rcCommand[0..3] telemetry — cannot render gimbal sticks."
+      "This flight has no rcCommand[0..3] telemetry — cannot render stick displays."
     );
   }
 
-  const durationSeconds = sampler.durationSeconds;
+  const stats = createFieldStats(flight);
+  const theme = mergeThemeOverrides(
+    resolveTheme(layout.theme),
+    layout.themeOverrides
+  );
 
-  if (durationSeconds <= 0) {
+  const width = layout.canvas.width;
+  const height = layout.canvas.height;
+
+  // Bounding boxes: scenePainter needs the same measure the
+  // editor sees; normalizeLayout is the single authority —
+  // the incoming layout is already normalized, so reuse a
+  // cheap re-measure via the schema's export.
+  const { normalizeLayout } = await import("./layout/layoutSchema.js");
+  const boxes = normalizeLayout(layout).boxes;
+
+  const durationSeconds = sampler
+    ? sampler.durationSeconds
+    : (flight.durationSeconds ?? 0);
+
+  if (!(durationSeconds > 0)) {
     throw new Error("Flight duration is zero — nothing to render.");
   }
 
@@ -164,35 +180,31 @@ export async function renderStickVideo(flight, outputPath, options = {}) {
     mkdirSync(outputDirectory, { recursive: true });
   }
 
-  const writer = new VideoWriter(outputPath, fps, WIDTH, HEIGHT, { alpha });
+  const writer = new VideoWriter(outputPath, fps, width, height, { alpha });
 
   const previewWriter = alpha
-    ? new VideoWriter(previewPathFor(outputPath), fps, WIDTH, HEIGHT, {
+    ? new VideoWriter(previewPathFor(outputPath), fps, width, height, {
         alpha: false
       })
     : null;
-  const checker = previewWriter ? buildCheckerboard() : null;
+  const checker = previewWriter ? buildCheckerboard(width, height) : null;
   // Reused for every preview frame so alpha renders don't
   // allocate a fresh RGBA copy per frame.
   const previewScratch = previewWriter
-    ? new Uint8Array(WIDTH * HEIGHT * 4)
+    ? new Uint8Array(width * height * 4)
     : null;
 
   try {
     for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
       const tSeconds = frameIndex / fps;
-      const sampled = sampler.frameAt(tSeconds);
+      const sceneState = sampler
+        ? buildSceneState({ flight, sampler, t: tSeconds, stats })
+        : buildSceneState({ t: tSeconds });
 
-      const frame = paintStickFrame(
-        sampled.positions,
-        {
-          armed: sampled.toggles.armed,
-          motorOn: sampled.toggles.motorOn,
-          ...sampled.telemetry
-        },
-        theme,
-        { alpha, shadow: options.shadow === true, font: font.id }
-      );
+      const frame = paintScene(layout, boxes, sceneState, theme, {
+        alpha,
+        shadow: layout.shadow === true
+      });
 
       await writer.writeFrame(frame);
 

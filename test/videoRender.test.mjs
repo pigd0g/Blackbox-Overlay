@@ -1,10 +1,11 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — VIDEO RENDER INTEGRATION TEST
+// RotorFlight-Blackbox-Video-Overlay — VIDEO RENDER INTEGRATION TEST (v2)
 // ======================================================
 //
-// Renders tiny synthetic videos and validates them with
-// ffprobe: opaque H.264 .mp4 and alpha ProRes 4444 .mov.
-// Skips cleanly when ffmpeg/ffprobe are not on PATH.
+// Renders tiny synthetic videos through a layout and
+// validates them with ffprobe: opaque H.264 .mp4 and alpha
+// ProRes 4444 .mov with the layout's canvas size. Skips
+// cleanly when ffmpeg/ffprobe are not on PATH.
 //
 // ======================================================
 
@@ -15,7 +16,8 @@ import { mkdtempSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { checkFfmpegAvailable, renderStickVideo } from "../src/render/videoRender.js";
+import { checkFfmpegAvailable, renderLayoutVideo } from "../src/render/videoRender.js";
+import { normalizeLayout, DEFAULT_LAYOUT, createItem } from "../src/render/layout/layoutSchema.js";
 
 function ffmpegAvailable() {
   try {
@@ -50,6 +52,8 @@ function syntheticFlight(seconds, fps) {
   }
 
   return {
+    index: 0,
+    durationSeconds: seconds,
     mainFieldNames: [
       "rcCommand[0]",
       "rcCommand[1]",
@@ -63,17 +67,34 @@ function syntheticFlight(seconds, fps) {
       "Ibat",
       "Tesc"
     ],
-    mainFrames: frames
+    mainFrames: frames,
+    slowFrames: [],
+    events: [],
+    sysConfig: {},
+    stats: {}
   };
 }
 
-test("renderStickVideo produces a valid mp4", { skip: !canRender }, async () => {
+function testLayout(alpha) {
+  const doc = DEFAULT_LAYOUT();
+  doc.canvas = { width: 320, height: 180 };
+  doc.alpha = alpha;
+  doc.items.push(createItem("stick", { col: 0, row: 0 }));
+  doc.items.push(createItem("text", { col: 2, row: 0, source: "derived:rpm", showLabel: true }));
+  doc.items.push(createItem("bar", { col: 4, row: 0, source: "derived:motorPct", maxValue: { mode: "percent" } }));
+
+  return normalizeLayout(doc).layout;
+}
+
+test("renderLayoutVideo produces a valid mp4 at the layout size", { skip: !canRender }, async () => {
   const directory = mkdtempSync(join(tmpdir(), "rfbvo-test-"));
-  const outputPath = join(directory, "sticks.mp4");
+  const outputPath = join(directory, "overlay.mp4");
 
   try {
     const flight = syntheticFlight(1, 10);
-    const result = await renderStickVideo(flight, outputPath, { fps: 10 });
+    const layout = testLayout(false);
+
+    const result = await renderLayoutVideo(flight, outputPath, { fps: 10, layout });
 
     assert.equal(result.frames, 10);
     assert.ok(existsSync(outputPath), "output mp4 missing");
@@ -94,8 +115,8 @@ test("renderStickVideo produces a valid mp4", { skip: !canRender }, async () => 
     const video = probe.streams.find((s) => s.codec_type === "video");
     assert.ok(video, "no video stream");
 
-    assert.equal(video.width, 800);
-    assert.equal(video.height, 262);
+    assert.equal(video.width, 320);
+    assert.equal(video.height, 180);
     assert.equal(video.codec_name, "h264");
     assert.equal(Number(probe.format.duration).toFixed(1), "1.0");
   } finally {
@@ -103,15 +124,17 @@ test("renderStickVideo produces a valid mp4", { skip: !canRender }, async () => 
   }
 });
 
-test("renderStickVideo with alpha produces ProRes 4444 .mov", { skip: !canRender }, async () => {
+test("renderLayoutVideo with alpha produces ProRes 4444 .mov + preview", { skip: !canRender }, async () => {
   const directory = mkdtempSync(join(tmpdir(), "rfbvo-alpha-"));
-  const outputPath = join(directory, "sticks.mov");
+  const outputPath = join(directory, "overlay.mov");
 
   try {
     const flight = syntheticFlight(0.5, 10);
-    const result = await renderStickVideo(flight, outputPath, {
+    const layout = testLayout(true);
+
+    const result = await renderLayoutVideo(flight, outputPath, {
       fps: 10,
-      alpha: true
+      layout
     });
 
     assert.equal(result.frames, 5);
@@ -128,33 +151,86 @@ test("renderStickVideo with alpha produces ProRes 4444 .mov", { skip: !canRender
     const video = probe.streams.find((s) => s.codec_type === "video");
 
     assert.equal(video.codec_name, "prores");
-    assert.equal(video.width, 800);
-    assert.equal(video.height, 262);
+    assert.equal(video.width, 320);
+    assert.equal(video.height, 180);
     assert.match(video.pix_fmt, /^yuva4444?/);
-
-    // Alpha-capable profile: 4444 (or its XT variants).
     assert.match(String(video.profile), /4444/);
+
+    // The flattened preview exists and is playable H.264.
+    const previewPath = result.previewPath;
+
+    assert.ok(previewPath, "preview path returned");
+    assert.ok(existsSync(previewPath));
+
+    const previewProbe = JSON.parse(
+      execFileSync(
+        "ffprobe",
+        ["-v", "error", "-show_streams", "-of", "json", previewPath],
+        { encoding: "utf8" }
+      )
+    );
+
+    assert.equal(previewProbe.streams.find((s) => s.codec_type === "video").codec_name, "h264");
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
 });
 
-test("renderStickVideo rejects flights without rcCommand telemetry", async () => {
+test("renderLayoutVideo rejects stick layouts on flights without rcCommand", async () => {
   const directory = mkdtempSync(join(tmpdir(), "rfbvo-test-"));
-  const outputPath = join(directory, "sticks.mp4");
+  const outputPath = join(directory, "overlay.mp4");
 
   try {
     await assert.rejects(
-      renderStickVideo(
-        { mainFieldNames: ["time"], mainFrames: [[0]] },
+      renderLayoutVideo(
+        { mainFieldNames: ["time"], mainFrames: [[0]], durationSeconds: 1, index: 0 },
         outputPath,
-        { fps: 10 }
+        { fps: 10, layout: testLayout(false) }
       ),
       /rcCommand/
     );
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test("renderLayoutVideo renders non-stick layouts without rcCommand", { skip: !canRender }, async () => {
+  const directory = mkdtempSync(join(tmpdir(), "rfbvo-nostick-"));
+  const outputPath = join(directory, "overlay.mov");
+
+  try {
+    const doc = DEFAULT_LAYOUT();
+    doc.canvas = { width: 160, height: 90 };
+    doc.items.push(createItem("text", { col: 0, row: 0, source: "custom", customText: "HELLO" }));
+
+    const layout = normalizeLayout(doc).layout;
+    const flight = {
+      index: 0,
+      durationSeconds: 1,
+      mainFieldNames: ["time"],
+      mainFrames: [[0], [10000], [20000]],
+      slowFrames: [],
+      events: [],
+      sysConfig: {},
+      stats: {}
+    };
+
+    const result = await renderLayoutVideo(flight, outputPath, { fps: 3, layout });
+
+    assert.equal(result.frames, 3);
+    assert.ok(existsSync(outputPath));
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("alpha render to an .mp4 path is rejected clearly", async () => {
+  const flight = syntheticFlight(0.5, 10);
+
+  await assert.rejects(
+    renderLayoutVideo(flight, "out/wrong.mp4", { fps: 10, layout: testLayout(true) }),
+    /\.mov/
+  );
 });
 
 test("checkFfmpegAvailable agrees with actual PATH state", async () => {

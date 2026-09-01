@@ -83,7 +83,19 @@ export function detectScales(flight) {
 
   const throttleIndex = flight.mainFieldNames.indexOf(THROTTLE_CHANNEL);
 
+  // v2: per-channel indexes for the pickers — all five
+  // rcCommand slots, present or not. The Betaflight-style
+  // fallback (rcCommand[3] IS throttle) is preserved.
+  const channelIndexes = [0, 1, 2, 3, 4].map((channel) => {
+    if (channel === 4) {
+      return throttleIndex;
+    }
+
+    return columns[channel].index;
+  });
+
   return {
+    channelIndexes,
     columnIndexes: {
       roll: columns[0].index,
       pitch: columns[1].index,
@@ -108,7 +120,11 @@ export function detectScales(flight) {
       roll: detectScale(columns[0].values),
       pitch: detectScale(columns[1].values),
       yaw: detectScale(columns[2].values),
-      collective: detectScale(columns[3].values)
+      collective: detectScale(columns[3].values),
+      throttle:
+        throttleIndex >= 0
+          ? detectScale(flight.mainFrames.map((frame) => frame[throttleIndex]))
+          : detectScale(columns[3].values)
     }
   };
 }

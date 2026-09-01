@@ -1,15 +1,16 @@
 {
   "name": "rotorflight-blackbox-video-overlay",
-  "version": "0.1.0",
-  "description": "Rotorflight blackbox (.bbl) log reader with gimbal-stick video rendering and a local GUI console",
+  "version": "2.0.0",
+  "description": "Rotorflight blackbox (.bbl) log reader with a local GUI overlay designer and layout-driven video rendering",
   "type": "module",
-  "main": "index.js",
+  "main": "src/gui/serve.js",
   "bin": {
-    "rotorflight-blackbox-video-overlay": "index.js"
+    "rotorflight-blackbox-video-overlay": "src/gui/serve.js"
   },
   "scripts": {
     "test": "node --test",
-    "gui": "node src/gui/serve.js"
+    "gui": "node src/gui/serve.js",
+    "start": "node src/gui/serve.js"
   },
   "keywords": [
     "rotorflight",

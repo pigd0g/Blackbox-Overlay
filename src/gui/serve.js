@@ -1,14 +1,25 @@
-#!/usr/bin/env node
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — LOCAL GUI SERVER
+// RotorFlight-Blackbox-Video-Overlay — LOCAL GUI SERVER (v2)
 // ======================================================
 //
-// Serves the RotorFlight-Blackbox-Video-Overlay console (src/gui/public) and its
-// JSON/preview/SSE API from src/gui/api.js.
+// Serves the RotorFlight-Blackbox-Video-Overlay console
+// (src/gui/public) and its JSON/preview/SSE API from
+// src/gui/api.js.
 //
 //   node src/gui/serve.js [--port N] [--no-open]
 //
 // Binds 127.0.0.1 only — nothing leaves the machine.
+//
+// API surface (v2):
+//   GET  /api/state                    capabilities + catalogs
+//   GET  /api/browse?dir=              fs browser
+//   POST /api/log                      describe a log
+//   POST /api/layout/normalize         validate + measure
+//   POST /api/preview                  frame for a layout
+//   POST /api/render                   start a render job
+//   GET  /api/jobs/:id[/events]        job status / SSE
+//   GET  /api/media?path=              finished render
+//   POST /api/upload                   dropped .bbl bytes
 //
 // ======================================================
 
@@ -21,14 +32,13 @@ import { dirname } from "node:path";
 import {
   browseDirectory,
   describeLog,
+  stateCatalog,
+  normalizeLayoutDoc,
   renderPreviewFrame,
-  flightTrace,
   startRenderJob,
   jobStatus,
   currentJob,
   subscribeJob,
-  themeCatalog,
-  fontsCatalog,
   ffmpegAvailable,
   resolveOutputPath,
   isCompletedOutput,
@@ -80,7 +90,7 @@ function sendError(res, status, message, code) {
   sendJson(res, status, payload);
 }
 
-function readBody(req, limit = 1024 * 1024) {
+function readBody(req, limit = 4 * 1024 * 1024) {
   return new Promise((resolvePromise, reject) => {
     let size = 0;
     const chunks = [];
@@ -197,9 +207,6 @@ function serveFontFile(req, res, pathname) {
 // ------------------------------------------------------
 
 function serveJobEvents(req, res, jobId) {
-  // Headers first: subscribing delivers an initial snapshot
-  // through res.write(), which would otherwise implicitly
-  // send default headers and make writeHead throw.
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-store",
@@ -215,8 +222,6 @@ function serveJobEvents(req, res, jobId) {
     return;
   }
 
-  // Northbound keepalive comment so proxies do not sit on
-  // the stream; also detects closed sockets.
   const keepalive = setInterval(() => {
     res.write(": keepalive\n\n");
   }, 15000);
@@ -236,11 +241,13 @@ async function handleApi(req, res, url) {
 
   if (req.method === "GET" && pathname === "/api/state") {
     const [ffmpeg] = await Promise.all([ffmpegAvailable()]);
+    const catalog = stateCatalog();
+
     return sendJson(res, 200, {
-      ffmpeg: ffmpeg,
-      themes: themeCatalog(),
-      fonts: fontsCatalog(),
-      activeJob: currentJob(),
+      ffmpeg,
+      themes: catalog.themes,
+      fonts: catalog.fonts,
+      defaultLayout: catalog.defaultLayout,
       home: tempDir()
     });
   }
@@ -263,6 +270,16 @@ async function handleApi(req, res, url) {
     }
   }
 
+  if (req.method === "POST" && pathname === "/api/layout/normalize") {
+    const body = await readBody(req);
+
+    try {
+      return sendJson(res, 200, normalizeLayoutDoc(body.layout ?? body));
+    } catch (error) {
+      return sendError(res, 400, error.message);
+    }
+  }
+
   if (req.method === "POST" && pathname === "/api/preview") {
     const body = await readBody(req);
 
@@ -278,27 +295,12 @@ async function handleApi(req, res, url) {
       "Content-Type": "application/octet-stream",
       "X-Frame-Width": String(result.width),
       "X-Frame-Height": String(result.height),
+      "X-Layout-Width": String(result.layoutWidth),
+      "X-Layout-Height": String(result.layoutHeight),
       "Content-Length": result.pixels.length,
       "Cache-Control": "no-store"
     });
     return void res.end(result.pixels);
-  }
-
-  if (req.method === "POST" && pathname === "/api/trace") {
-    const body = await readBody(req);
-
-    try {
-      return sendJson(res, 200, flightTrace(body));
-    } catch (error) {
-      return sendError(res, 400, error.message);
-    }
-  }
-
-  if (
-    req.method === "POST" &&
-    (pathname === "/api/trace" || pathname === "/api/preview")
-  ) {
-    // Both handlers read JSON bodies; fall through below.
   }
 
   if (req.method === "POST" && pathname === "/api/upload") {
@@ -346,7 +348,13 @@ async function handleApi(req, res, url) {
       return sendError(res, 400, "path and flight are required.");
     }
 
+    if (!body.layout || typeof body.layout !== "object") {
+      return sendError(res, 400, "layout is required.");
+    }
+
     const sourceFile = body.path ?? body.file;
+    const alpha = body.layout.alpha === true;
+
     // Renders always land in <cwd>/out/ — a bare name keeps
     // its stem, anything path-like is flattened. Alpha
     // renders (transparent background) encode ProRes 4444.
@@ -354,7 +362,7 @@ async function handleApi(req, res, url) {
       body.output,
       sourceFile,
       body.flight,
-      body.alpha === true
+      alpha
     );
 
     try {
@@ -362,11 +370,7 @@ async function handleApi(req, res, url) {
         file: sourceFile,
         flight: body.flight,
         fps: body.fps,
-        theme: body.theme,
-        themeOverrides: body.themeOverrides,
-        font: body.font,
-        alpha: body.alpha,
-        shadow: body.shadow,
+        layout: body.layout,
         output
       });
 
@@ -446,7 +450,7 @@ function parseServeArgs(argv) {
 }
 
 function printServeUsage() {
-  console.log(`RotorFlight-Blackbox-Video-Overlay GUI — local console for decoding and rendering .bbl logs
+  console.log(`RotorFlight-Blackbox-Video-Overlay GUI — local console for decoding .bbl logs and designing overlay layouts
 
 Usage:
   node src/gui/serve.js [options]

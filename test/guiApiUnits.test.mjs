@@ -83,7 +83,7 @@ test("resolveOutputPath falls back to the log-based default", () => {
 
   assert.equal(resolve(result), resolve(expected));
   assertInOutDir(result);
-  assert.match(result, /file-flight3-sticks\.mp4$/);
+  assert.match(result, /file-flight3-overlay\.mp4$/);
 });
 
 test("resolveOutputPath forces .mov for alpha renders", () => {
@@ -98,7 +98,7 @@ test("resolveOutputPath forces .mov for alpha renders", () => {
     resolve(fallback),
     resolve(suggestOutputPath("some/log/file.bbl", 3, true))
   );
-  assert.match(fallback, /file-flight3-sticks\.mov$/);
+  assert.match(fallback, /file-flight3-overlay\.mov$/);
 });
 
 test("resolveOutputPath keeps .mp4 when alpha is off", () => {

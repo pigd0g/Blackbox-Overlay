@@ -1,5 +1,11 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — THEME TESTS
+// RotorFlight-Blackbox-Video-Overlay — THEME TESTS (v2)
+// ======================================================
+//
+// Themes are STRUCTURAL defaults: fonts, card, stick, bar,
+// donut slots plus background/textShadow. No per-widget
+// colour keys. Overrides merge by path.
+//
 // ======================================================
 
 import { test } from "node:test";
@@ -8,221 +14,112 @@ import assert from "node:assert/strict";
 import {
   THEMES,
   THEME_NAMES,
-  THEME_KEYS,
-  THEME_HEX,
   resolveTheme,
-  applyThemeOverrides,
-  hexToRgb
+  mergeThemeOverrides,
+  normalizeThemeColor,
+  colorOf,
+  themeColorMap,
+  themeHasPath
 } from "../src/render/themes.js";
 
-const EXPECTED = {
-  default: {
-    background: "#C6D8D3",
-    box: "#404040",
-    crosshair: "#92898A",
-    dot: "#EE4266",
-    labelOff: "#242424",
-    rpm: "#6A380E",
-    armed: "#1B5E20",
-    motor: "#242424",
-    vCell: "#1A5374",
-    current: "#8E4A0B",
-    maxCurrent: "#5C5C5C",
-    escTemp: "#7A5A00",
-    barMotor: "#2E7D32",
-    barCurrent: "#C8770C",
-    barTrack: "#B9C2BB",
-    textShadow: "#f2f2f2"
-  },
-  light: {
-    background: "#E8EAED",
-    box: "#404040",
-    crosshair: "#B0B3B8",
-    dot: "#EE4266",
-    labelOff: "#FFFFFF",
-    rpm: "#FFFFFF",
-    armed: "#FFFFFF",
-    motor: "#FFFFFF",
-    vCell: "#FFFFFF",
-    current: "#FFFFFF",
-    maxCurrent: "#FFFFFF",
-    escTemp: "#FFFFFF",
-    barMotor: "#05FF6D",
-    barCurrent: "#005FEE",
-    barTrack: "#DADCE0",
-    textShadow: "#4c4d4d"
-  },
-  gunmetal: {
-    background: "#B8C7C9",
-    box: "#252A2E",
-    crosshair: "#65727A",
-    dot: "#00D9FF",
-    labelOff: "#172025",
-    rpm: "#B45F06",
-    armed: "#00AFC7",
-    motor: "#172025",
-    vCell: "#176B85",
-    current: "#B45F06",
-    maxCurrent: "#3B4A52",
-    escTemp: "#7A6114",
-    barMotor: "#00AFC7",
-    barCurrent: "#E07C06",
-    barTrack: "#8FA3A6",
-    textShadow: "#f2f2f2"
-  },
-  charcoal: {
-    background: "#C2CBC5",
-    box: "#292C2B",
-    crosshair: "#68716D",
-    dot: "#FFB000",
-    labelOff: "#1F2422",
-    rpm: "#D47B00",
-    armed: "#4F8A4B",
-    motor: "#1F2422",
-    vCell: "#27718A",
-    current: "#D47B00",
-    maxCurrent: "#565B58",
-    escTemp: "#7A6210",
-    barMotor: "#4F8A4B",
-    barCurrent: "#E69400",
-    barTrack: "#9AA69D",
-    textShadow: "#f2f2f2"
-  },
-  slate: {
-    background: "#C4D0D4",
-    box: "#30363A",
-    crosshair: "#727D83",
-    dot: "#FF4F8B",
-    labelOff: "#20272B",
-    rpm: "#B75C3A",
-    armed: "#2F8065",
-    motor: "#20272B",
-    vCell: "#287B9C",
-    current: "#B75C3A",
-    maxCurrent: "#4A5459",
-    escTemp: "#7C5F2E",
-    barMotor: "#3D9B78",
-    barCurrent: "#D96A42",
-    barTrack: "#9AA6AC",
-    textShadow: "#f2f2f2"
-  },
-  lime: {
-    background: "#CBD3CF",
-    box: "#202522",
-    crosshair: "#59615C",
-    dot: "#B7FF00",
-    labelOff: "#18201A",
-    rpm: "#E07A19",
-    armed: "#659E22",
-    motor: "#18201A",
-    vCell: "#27809A",
-    current: "#E07A19",
-    maxCurrent: "#4A524D",
-    escTemp: "#7A610F",
-    barMotor: "#78B82A",
-    barCurrent: "#F08C1C",
-    barTrack: "#A9B2AA",
-    textShadow: "#f2f2f2"
-  }
-};
+test("six themes ship, all with the v2 structural slots", () => {
+  assert.deepEqual(THEME_NAMES, [
+    "default",
+    "light",
+    "gunmetal",
+    "charcoal",
+    "slate",
+    "lime"
+  ]);
 
-function rgb(hexString) {
-  return [
-    parseInt(hexString.slice(1, 3), 16),
-    parseInt(hexString.slice(3, 5), 16),
-    parseInt(hexString.slice(5, 7), 16)
-  ];
-}
-
-test("every theme carries exactly the 16 interface colors", () => {
   for (const name of THEME_NAMES) {
-    assert.deepEqual(Object.keys(THEMES[name]).sort(), [...THEME_KEYS].sort());
+    const theme = resolveTheme(name);
+
+    assert.ok(theme.background?.hex, `${name}: background`);
+    assert.ok(theme.textShadow?.hex, `${name}: textShadow`);
+    assert.ok(theme.fonts.label.size > 0, `${name}: label size`);
+    assert.ok(theme.fonts.value.size > 0, `${name}: value size`);
+    assert.ok(theme.fonts.label.color?.hex, `${name}: label color`);
+    assert.ok(theme.fonts.value.color?.hex, `${name}: value color`);
+    assert.equal(theme.card.color, null, `${name}: card default none`);
+    assert.ok(theme.stick.box?.hex, `${name}: stick box`);
+    assert.ok(theme.stick.crosshair?.hex, `${name}: crosshair`);
+    assert.ok(theme.stick.dot?.hex, `${name}: dot`);
+    assert.ok(theme.bar.track?.hex, `${name}: bar track`);
+    assert.ok(theme.bar.fill?.hex, `${name}: bar fill`);
+    assert.ok(theme.donut.track?.hex, `${name}: donut track`);
+    assert.ok(theme.donut.fill?.hex, `${name}: donut fill`);
   }
 });
 
-test("theme hex values match the palette spec exactly", () => {
-  for (const [name, expected] of Object.entries(EXPECTED)) {
-    for (const [key, hex] of Object.entries(expected)) {
-      assert.deepEqual(
-        THEMES[name][key],
-        rgb(hex),
-        `${name}.${key} should be ${hex}`
-      );
-    }
-  }
+test("resolveTheme throws for unknown names, case-insensitive otherwise", () => {
+  assert.throws(() => resolveTheme("nope"), /Unknown theme/);
+  assert.deepEqual(resolveTheme("GUNMETAL").background, resolveTheme("gunmetal").background);
+  assert.deepEqual(resolveTheme(undefined).background, resolveTheme("default").background);
 });
 
-test("resolveTheme is case-insensitive and defaults sensibly", () => {
-  assert.equal(resolveTheme("GUNMETAL"), THEMES.gunmetal);
-  assert.equal(resolveTheme("Slate"), THEMES.slate);
-  assert.equal(resolveTheme(undefined), THEMES.default);
-  assert.equal(resolveTheme(""), THEMES.default);
-  assert.equal(resolveTheme(null), THEMES.default);
+test("resolveTheme never leaks the registry object", () => {
+  const a = resolveTheme("default");
+  const b = resolveTheme("default");
+
+  a.stick.dot = { hex: "#000000", alpha: 100 };
+
+  assert.equal(b.stick.dot.hex, "#ee4266");
 });
 
-test("resolveTheme rejects unknown names with the valid list", () => {
-  assert.throws(
-    () => resolveTheme("neon-pink"),
-    /Unknown theme "neon-pink".*light, gunmetal, charcoal, slate, lime/
-  );
+test("normalizeThemeColor accepts hex strings and {hex,alpha}", () => {
+  assert.deepEqual(normalizeThemeColor("#EE4266"), { hex: "#ee4266", alpha: 100 });
+  assert.deepEqual(normalizeThemeColor("#abc"), { hex: "#aabbcc", alpha: 100 });
+  assert.deepEqual(normalizeThemeColor({ hex: "#123456", alpha: 40 }), { hex: "#123456", alpha: 40 });
+  assert.deepEqual(normalizeThemeColor({ hex: "#123456", alpha: 250 }), { hex: "#123456", alpha: 100 });
+  assert.equal(normalizeThemeColor("nope"), null);
+  assert.equal(normalizeThemeColor(null), null);
 });
 
-test("THEME_HEX mirrors THEMES as lowercase #rrggbb strings", () => {
-  for (const name of THEME_NAMES) {
-    assert.deepEqual(Object.keys(THEME_HEX[name]).sort(), [...THEME_KEYS].sort());
-
-    for (const key of THEME_KEYS) {
-      const [r, g, b] = THEMES[name][key];
-      assert.equal(
-        THEME_HEX[name][key],
-        `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`,
-        `${name}.${key} hex should round-trip the rgb triplet`
-      );
-    }
-  }
+test("colorOf maps slots into paint space", () => {
+  assert.deepEqual(colorOf("#FF8000"), [255, 128, 0, 255]);
+  assert.deepEqual(colorOf({ hex: "#FF8000", alpha: 50 }), [255, 128, 0, 128]);
+  assert.deepEqual(colorOf(null, "#102030"), [16, 32, 48, 255]);
 });
 
-test("hexToRgb parses #rgb and #rrggbb, rejects garbage", () => {
-  assert.deepEqual(hexToRgb("#EE4266"), [0xee, 0x42, 0x66]);
-  assert.deepEqual(hexToRgb("#f80"), [255, 136, 0]);
-  assert.deepEqual(hexToRgb("#abc"), [0xaa, 0xbb, 0xcc]);
-  assert.equal(hexToRgb("EE4266"), null);
-  assert.deepEqual(hexToRgb("#eE4266"), [0xee, 0x42, 0x66]);
-  assert.equal(hexToRgb("#12345"), null);
-  assert.equal(hexToRgb("#1234567"), null);
-  assert.equal(hexToRgb(""), null);
-  assert.equal(hexToRgb(null), null);
-  assert.equal(hexToRgb(42), null);
-});
-
-test("applyThemeOverrides merges valid keys and ignores the rest", () => {
-  const merged = applyThemeOverrides(THEMES.default, {
-    dot: "#00FF88",
-    escTemp: "#123",
-    bogusKey: "#FF0000",
-    rpm: "not-a-color",
-    motor: 12345
+test("mergeThemeOverrides assigns by path and ignores junk", () => {
+  const base = resolveTheme("default");
+  const merged = mergeThemeOverrides(base, {
+    "stick.dot": "#00FF88",
+    "fonts.label.size": 18,
+    "card.accent": { hex: "#123456", alpha: 50 },
+    "nonexistent.path": "#FFFFFF",
+    "stick.dot": null
   });
 
-  assert.deepEqual(merged.dot, [0x00, 0xff, 0x88]);
-  assert.deepEqual(merged.escTemp, [0x11, 0x22, 0x33]);
-  assert.equal("bogusKey" in merged, false, "unknown keys must be dropped");
-  assert.deepEqual(merged.rpm, THEMES.default.rpm, "invalid hex ignored");
-  assert.deepEqual(merged.motor, THEMES.default.motor, "non-string ignored");
-
-  // The base theme is never mutated.
-  assert.deepEqual(THEMES.default.dot, [0xee, 0x42, 0x66]);
+  // dot ends as the LAST override (null drops it, keeping base).
+  assert.equal(merged.stick.dot.hex, "#ee4266");
+  assert.equal(merged.fonts.label.size, 18);
+  assert.deepEqual(merged.card.accent, { hex: "#123456", alpha: 50 });
+  assert.equal(base.stick.dot.hex, "#ee4266", "base never mutated");
 });
 
-test("applyThemeOverrides tolerates absent/odd override objects", () => {
-  assert.deepEqual(
-    applyThemeOverrides(THEMES.default, null),
-    THEMES.default
-  );
-  assert.deepEqual(
-    applyThemeOverrides(THEMES.default, undefined),
-    THEMES.default
-  );
-  assert.deepEqual(applyThemeOverrides(THEMES.default, "junk"), THEMES.default);
-  assert.deepEqual(applyThemeOverrides(THEMES.default, {}), THEMES.default);
+test("mergeThemeOverrides supports colour slots only", () => {
+  const merged = mergeThemeOverrides(resolveTheme("default"), {
+    background: { hex: "#0A0B0C", alpha: 100 }
+  });
+
+  assert.equal(merged.background.hex, "#0a0b0c");
+});
+
+test("themeColorMap flattens hex slots for the GUI", () => {
+  const map = themeColorMap(resolveTheme("default"));
+
+  assert.equal(map["stick.dot"], "#ee4266");
+  assert.equal(map["bar.fill"], "#2e7d32");
+  // card.color is null by default → omitted.
+  assert.equal("card.color" in map, false);
+});
+
+test("themeHasPath validates override targets", () => {
+  const theme = resolveTheme("default");
+
+  assert.equal(themeHasPath(theme, "stick.dot"), true);
+  assert.equal(themeHasPath(theme, "stick.nope"), false);
+  assert.equal(themeHasPath(theme, "fonts.label.size"), true);
 });

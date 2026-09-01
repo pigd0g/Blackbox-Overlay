@@ -15,7 +15,8 @@ import { join } from "node:path";
 
 import { decodeBblFile } from "../src/bbl/bblDecoder.js";
 import { createFlightSampler } from "../src/render/frameSampler.js";
-import { renderStickVideo } from "../src/render/videoRender.js";
+import { renderLayoutVideo } from "../src/render/videoRender.js";
+import { normalizeLayout, DEFAULT_LAYOUT } from "../src/render/layout/layoutSchema.js";
 
 const FIXTURE = join(
   import.meta.dirname,
@@ -88,16 +89,20 @@ test("frameAt rejects non-finite times", () => {
   assert.equal(sampler.frameAt(Number.NaN), null);
 });
 
-test("sampler reproduces the CLI video render output", async () => {
+test("sampler reproduces the video render output", async () => {
   if (!hasFixture) return;
 
   const dir = mkdtempSync(join(tmpdir(), "rfbvo-sampler-"));
 
   try {
-    const result = await renderStickVideo(
+    const doc = DEFAULT_LAYOUT();
+    doc.canvas = { width: 160, height: 90 };
+    doc.items = []; // empty layout: pure pipeline check
+
+    const result = await renderLayoutVideo(
       flight,
-      join(dir, "sampler-check.mp4"),
-      { fps: 10, onProgress: () => {} }
+      join(dir, "sampler-check.mov"),
+      { fps: 10, layout: normalizeLayout(doc).layout, onProgress: () => {} }
     );
 
     assert.ok(result.frames > 10);

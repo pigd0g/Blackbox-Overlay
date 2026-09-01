@@ -69,7 +69,12 @@ html, body {
    Chassis scaffold
    ------------------------------------------------------ */
 .chassis {
-  min-height: 100vh;
+  /* App-shell layout: the console is capped to the viewport
+     (with a floor so very short windows page instead of
+     crushing the columns), and each face column scrolls
+     internally. */
+  height: 100vh;
+  min-height: 560px;
   display: flex;
   flex-direction: column;
   max-width: 1720px;
@@ -160,6 +165,9 @@ html, body {
   grid-template-columns: 250px 232px minmax(420px, 1fr) 280px;
   gap: 12px;
   align-items: stretch;
+  /* The face owns the leftover viewport height; children
+     clamp to it and scroll internally. */
+  min-height: 0;
 }
 
 @media (max-width: 1500px) {
@@ -178,7 +186,18 @@ html, body {
   flex-direction: column;
   gap: 10px;
   min-height: 0;
+  /* Column cap + internal scroll: a column never exceeds the
+     face height; its content scrolls beneath a sticky title. */
+  max-height: 100%;
   overflow: hidden auto;
+}
+
+/* Column titles stay visible while the column scrolls. */
+.rail-title {
+  position: sticky;
+  top: -12px; /* cancel the rail's 12px padding */
+  z-index: 2;
+  background: var(--plate);
 }
 
 /* The telemetry column pins its controls and scrolls only
@@ -200,7 +219,6 @@ html, body {
   border-bottom: 2px solid var(--rule-soft);
   padding-bottom: 6px;
 }
-
 .group-title {
   margin: 10px 0 6px;
   font-size: 11px;

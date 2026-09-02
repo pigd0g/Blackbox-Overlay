@@ -42,6 +42,7 @@ import { createFieldStats } from "../render/layout/fieldStats.js";
 import { normalizeLayout, firstFreeCell } from "../render/layout/layoutSchema.js";
 import { buildSceneState } from "../render/layout/sceneState.js";
 import { paintScene } from "../render/layout/scenePainter.js";
+import { resolveOutputFormat } from "../render/outputFormats.js";
 import {
   THEME_NAMES,
   themeColorMap,
@@ -53,6 +54,7 @@ import {
   renderLayoutVideo,
   checkFfmpegAvailable
 } from "../render/videoRender.js";
+import { OUTPUT_FORMATS, DEFAULT_OUTPUT_FORMAT } from "../render/outputFormats.js";
 
 // ------------------------------------------------------
 // Constants
@@ -515,6 +517,12 @@ export function stateCatalog() {
   return {
     themes: { names: [...THEME_NAMES], maps: themeMaps },
     fonts: fontCatalog(),
+    outputFormats: OUTPUT_FORMATS.map(({ id, label, extension, alpha }) => ({
+      id,
+      label,
+      extension,
+      alpha: alpha === true
+    })),
     defaultLayout: normalizeLayoutDoc(null).layout
   };
 }
@@ -708,6 +716,7 @@ function jobSnapshot(job) {
     file: job.file,
     flight: job.flight,
     fps: job.fps,
+    format: job.format,
     layout: job.layout,
     output: job.output,
     previewPath: job.previewPath,
@@ -752,7 +761,8 @@ export function startRenderJob({
   fps,
   layout: rawLayout,
   output,
-  preview
+  preview,
+  format
 }) {
   if (activeJob && !activeJob.settled) {
     const error = new Error("A render is already in progress.");
@@ -782,6 +792,9 @@ export function startRenderJob({
     file: resolve(String(sourceFile)),
     flight: Number(flight),
     fps: normalizeFps(fps),
+    // Codec id (outputFormats.js) — alpha codecs for
+    // transparent renders, h264-yuv420p for opaque ones.
+    format: format ?? DEFAULT_OUTPUT_FORMAT,
     layout,
     warnings,
     output: resolve(String(output)),
@@ -799,6 +812,7 @@ export function startRenderJob({
   renderLayoutVideo(flightObj, job.output, {
     layout,
     fps: job.fps,
+    format: job.format,
     preview: job.preview,
     onProgress: (message) => {
       job.message = message;
@@ -894,14 +908,15 @@ export async function ffmpegAvailable() {
 }
 
 /**
- * Default GUI render destination: <cwd>/out/<logbase>-flight<N>-overlay.mp4
- * (or .mov for alpha renders).
+ * Default GUI render destination: <cwd>/out/<logbase>-flight<N>-overlay.<ext>
+ * (.mov/.webm per the chosen format; .mp4 when the format is
+ * opaque or unspecified).
  */
-export function suggestOutputPath(filePath, flight, alpha = false) {
+export function suggestOutputPath(filePath, flight, alpha = false, format = null) {
   const leaf =
     String(filePath).replace(/\.[^.]+$/, "").split(/[\\/]/).pop() || "log";
 
-  const extension = alpha ? ".mov" : ".mp4";
+  const extension = resolveOutputFormat(format).extension;
 
   return join(
     process.cwd(),
@@ -919,10 +934,11 @@ export function isPathInside(path, dir) {
 
 /**
  * Every GUI render lands in <cwd>/out/ — whatever the
- * client sends, only the file name survives. Alpha renders
- * force a .mov; opaque renders stay .mp4.
+ * client sends, only the file name survives. The extension
+ * follows the chosen format; unknown/null ids fall back to
+ * the default (PNG lossless .mov).
  */
-export function resolveOutputPath(output, filePath, flight, alpha = false) {
+export function resolveOutputPath(output, filePath, flight, alpha = false, format = null) {
   const requested = String(output ?? "").trim();
 
   const stem =
@@ -931,9 +947,9 @@ export function resolveOutputPath(output, filePath, flight, alpha = false) {
       .pop()
       ?.replace(/\.[^.]+$/, "") || null;
 
-  const extension = alpha ? ".mov" : ".mp4";
+  const extension = resolveOutputFormat(format).extension;
 
   return stem
     ? join(process.cwd(), "out", `${stem}${extension}`)
-    : suggestOutputPath(filePath, flight, alpha);
+    : suggestOutputPath(filePath, flight, alpha, format);
 }

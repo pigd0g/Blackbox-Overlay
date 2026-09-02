@@ -49,6 +49,8 @@ const els = {
   layoutNewBtn: $("layout-new-btn"),
   layoutSaveBtn: $("layout-save-btn"),
   layoutDeleteBtn: $("layout-delete-btn"),
+  layoutsPane: document.querySelector(".layouts-pane"),
+  layoutsToggle: $("layouts-toggle"),
   saveDialog: $("save-dialog"),
   saveClose: $("save-close"),
   saveForm: $("save-form"),
@@ -64,6 +66,10 @@ const els = {
   themeStack: $("theme-stack"),
   fontStack: $("font-stack"),
   alphaToggle: $("alpha-toggle"),
+  alphaHint: $("alpha-hint"),
+  formatSelect: $("format-select"),
+  formatRow: $("format-row"),
+  formatHint: $("format-hint"),
   shadowToggle: $("shadow-toggle"),
   previewToggle: $("preview-toggle"),
   fpsInput: $("fps-input"),
@@ -143,6 +149,9 @@ const state = {
   previewPending: false,
   // Browser-only preview backdrop key (BACKDROP_PRESETS).
   backdrop: BACKDROP_DEFAULT_KEY,
+  // Output formats (server catalog) + active id.
+  outputFormats: [],
+  format: "vp9-yuva420p",
   // Layout library: { presets: [{id,name}], user: [{id,name,mtime}] }
   layouts: { presets: [], user: [] },
   // Active layout identity: { id, user } or null for the
@@ -2117,8 +2126,8 @@ els.gridToggle.addEventListener("change", () => {
 els.alphaToggle.addEventListener("change", () => {
   state.layout.alpha = els.alphaToggle.checked;
   els.alphaHint.hidden = false;
-  updateOutputExtension();
   syncPreviewControls();
+  updateOutputExtension();
   scheduleSync(0);
 });
 
@@ -2133,19 +2142,87 @@ els.previewToggle.addEventListener("change", () => {
   syncPreviewControls();
 });
 
+// Codec picker: re-derive the output extension and the hint
+// (VP9 lands in .webm, the rest in .mov/.mp4).
+els.formatSelect.addEventListener("change", () => {
+  state.format = els.formatSelect.value;
+  syncFormatHint();
+  updateOutputExtension();
+});
+
 function syncPreviewControls() {
   const alpha = state.layout?.alpha === true;
 
   els.previewToggle.disabled = !alpha;
   $("preview-hint").hidden = !alpha;
+  els.formatHint.hidden = false;
+
+  // The menu always shows, but Transparency filters what it
+  // offers: alpha codecs when on, H.264 when off. If the
+  // active codec is filtered out, snap to the first valid
+  // one and re-derive the output extension.
+  rebuildFormatOptions();
+
+  if (!formatsForMode(alpha).some((format) => format.id === state.format)) {
+    state.format = formatsForMode(alpha)[0].id;
+    updateOutputExtension();
+  }
+
+  els.formatSelect.value = state.format;
+  syncFormatHint();
+}
+
+function formatsForMode(alpha) {
+  return state.outputFormats.filter(
+    (format) => (alpha ? format.alpha === true : format.alpha !== true)
+  );
+}
+
+function rebuildFormatOptions() {
+  const alpha = state.layout?.alpha === true;
+  const options = formatsForMode(alpha);
+
+  els.formatSelect.innerHTML = "";
+
+  for (const format of options) {
+    const option = document.createElement("option");
+
+    option.value = format.id;
+    option.textContent = format.label;
+    els.formatSelect.appendChild(option);
+  }
+}
+
+function activeFormat() {
+  return (
+    state.outputFormats.find((format) => format.id === state.format) ??
+    state.outputFormats[0] ??
+    null
+  );
+}
+
+function syncFormatHint() {
+  const format = activeFormat();
+
+  if (format) {
+    const alpha = state.layout?.alpha === true;
+
+    els.formatHint.textContent =
+      `${format.label} → ${format.extension}` +
+      (alpha ? " with alpha" : ", theme background fill");
+  }
 }
 
 function updateOutputExtension() {
-  const extension = state.layout.alpha ? "mov" : "mp4";
+  const extension =
+    (activeFormat()?.extension ?? ".mp4").replace(/^\./, "");
   const current = els.outputInput.value.trim();
 
-  if (/\.(mp4|mov)$/i.test(current)) {
-    els.outputInput.value = current.replace(/\.(mp4|mov)$/i, `.${extension}`);
+  if (/\.(mp4|mov|webm)$/i.test(current)) {
+    els.outputInput.value = current.replace(
+      /\.(mp4|mov|webm)$/i,
+      `.${extension}`
+    );
   }
 }
 
@@ -2392,7 +2469,11 @@ function updateOutputDefault() {
       .replace(/\.[^.]+$/, "") || "log";
 
   if (els.outputInput.dataset.touched !== "1") {
-    els.outputInput.value = `out/${leaf}-flight${state.flight}-overlay.${state.layout.alpha ? "mov" : "mp4"}`;
+    const extension = state.layout.alpha
+      ? (activeFormat()?.extension ?? ".mov")
+      : ".mp4";
+
+    els.outputInput.value = `out/${leaf}-flight${state.flight}-overlay${extension}`;
     els.outputInput.dataset.touched = "1";
   } else {
     updateOutputExtension();
@@ -2618,6 +2699,47 @@ function layoutsHintText() {
 function refreshLayoutsHint() {
   els.layoutsHint.textContent = layoutsHintText();
 }
+
+// ------------------------------------------------------
+// Layout pane collapse: the LAYOUT header toggles the body
+// (hint + preset/user scrollers) while New/Save/Delete stay
+// in view. State persists across reloads.
+// ------------------------------------------------------
+
+const LAYOUTS_COLLAPSE_KEY = "rfbvo.layoutsCollapsed";
+
+function applyLayoutsCollapsed(collapsed) {
+  els.layoutsPane.classList.toggle("collapsed", collapsed);
+  els.layoutsToggle.setAttribute("aria-expanded", String(!collapsed));
+  els.layoutsToggle.querySelector(".chev").textContent = "▾";
+  els.layoutsToggle.title = collapsed
+    ? "Expand the layout library"
+    : "Collapse the layout library";
+}
+
+function layoutsCollapsed() {
+  try {
+    return localStorage.getItem(LAYOUTS_COLLAPSE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function setLayoutsCollapsed(collapsed) {
+  try {
+    localStorage.setItem(LAYOUTS_COLLAPSE_KEY, collapsed ? "1" : "0");
+  } catch {
+    // Storage unavailable — collapse just won't persist.
+  }
+
+  applyLayoutsCollapsed(collapsed);
+}
+
+els.layoutsToggle.addEventListener("click", () => {
+  setLayoutsCollapsed(!els.layoutsPane.classList.contains("collapsed"));
+});
+
+applyLayoutsCollapsed(layoutsCollapsed());
 
 function markLayoutSelection() {
   for (const stack of [els.presetStack, els.userStack]) {
@@ -2967,6 +3089,8 @@ els.renderBtn.addEventListener("click", async () => {
       output: els.outputInput.value.trim(),
       // Alpha renders optionally skip the flattened .preview.mp4.
       preview: els.previewToggle.checked !== false,
+      // Alpha codec (A–E); ignored for opaque renders.
+      format: state.format,
     });
 
     watchJob(payload.jobId);
@@ -3135,6 +3259,15 @@ async function boot() {
     state.fonts = serverState.fonts;
     state.fonts.default = serverState.fonts.default || "vt323";
     state.layout.font = serverState.fonts.default || "vt323";
+
+    // Codec menu (alpha + H.264); falls back to VP9-only when
+    // an older server build replies without the catalog.
+    state.outputFormats = Array.isArray(serverState.outputFormats)
+      ? serverState.outputFormats
+      : [{ id: "vp9-yuva420p", label: "VP9 alpha 4:2:0 (Small)", extension: ".webm", alpha: true }];
+    state.format = activeFormat()?.id ?? state.outputFormats[0].id;
+
+    syncPreviewControls();
 
     // Snapshot AFTER the server-side font default lands, or
     // the app would boot believing it has unsaved changes.

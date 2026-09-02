@@ -53,7 +53,10 @@ function assertInOutDir(actual, message) {
 }
 
 test("resolveOutputPath keeps a bare file name in out/", () => {
-  const result = resolveOutputPath("my-video.mp4", "ignored.bbl", 1);
+  // Opaque H.264 renders keep the classic .mp4 extension.
+  const result = resolveOutputPath(
+    "my-video.mp4", "ignored.bbl", 1, false, "h264-yuv420p"
+  );
 
   assertInOutDir(result);
   assert.equal(
@@ -63,8 +66,8 @@ test("resolveOutputPath keeps a bare file name in out/", () => {
 });
 
 test("resolveOutputPath flattens absolute and ../ escapes", () => {
-  const absolute = resolveOutputPath("C:\\Windows\\evil.mp4", "a.bbl", 1);
-  const traversal = resolveOutputPath("../../../evil.mp4", "a.bbl", 1);
+  const absolute = resolveOutputPath("C:\\Windows\\evil.mp4", "a.bbl", 1, false, "h264-yuv420p");
+  const traversal = resolveOutputPath("../../../evil.mp4", "a.bbl", 1, false, "h264-yuv420p");
 
   assertInOutDir(absolute, "absolute path must be flattened");
   assertInOutDir(traversal, "traversal path must be flattened");
@@ -73,24 +76,24 @@ test("resolveOutputPath flattens absolute and ../ escapes", () => {
 });
 
 test("resolveOutputPath strips a trailing extension cleanly", () => {
-  const result = resolveOutputPath("clip sticks.mp4", "a.bbl", 1);
+  const result = resolveOutputPath("clip sticks.mp4", "a.bbl", 1, false, "h264-yuv420p");
   assert.equal(resolve(result), resolve(OUT_DIR, "clip sticks.mp4"));
 });
 
 test("resolveOutputPath falls back to the log-based default", () => {
-  const result = resolveOutputPath("", "some/log/file.bbl", 3);
-  const expected = suggestOutputPath("some/log/file.bbl", 3);
+  const result = resolveOutputPath("", "some/log/file.bbl", 3, false, "h264-yuv420p");
+  const expected = suggestOutputPath("some/log/file.bbl", 3, false, "h264-yuv420p");
 
   assert.equal(resolve(result), resolve(expected));
   assertInOutDir(result);
   assert.match(result, /file-flight3-overlay\.mp4$/);
 });
 
-test("resolveOutputPath forces .mov for alpha renders", () => {
+test("resolveOutputPath forces .webm for default alpha renders", () => {
   const named = resolveOutputPath("my-video.mp4", "a.bbl", 1, true);
 
   assertInOutDir(named);
-  assert.equal(resolve(named), resolve(OUT_DIR, "my-video.mov"));
+  assert.equal(resolve(named), resolve(OUT_DIR, "my-video.webm"));
 
   const fallback = resolveOutputPath("", "some/log/file.bbl", 3, true);
 
@@ -98,12 +101,53 @@ test("resolveOutputPath forces .mov for alpha renders", () => {
     resolve(fallback),
     resolve(suggestOutputPath("some/log/file.bbl", 3, true))
   );
-  assert.match(fallback, /file-flight3-overlay\.mov$/);
+  assert.match(fallback, /file-flight3-overlay\.webm$/);
 });
 
-test("resolveOutputPath keeps .mp4 when alpha is off", () => {
-  const named = resolveOutputPath("clip.mov", "a.bbl", 1, false);
+test("resolveOutputPath follows the chosen alpha format", () => {
+  // VP9 lives in WebM; ProRes and PNG stay .mov.
+  assert.equal(
+    resolve(resolveOutputPath("clip.mp4", "a.bbl", 1, true, "vp9-yuva420p")),
+    resolve(OUT_DIR, "clip.webm")
+  );
+  assert.equal(
+    resolve(resolveOutputPath("clip.mp4", "a.bbl", 1, true, "png-rgba")),
+    resolve(OUT_DIR, "clip.mov")
+  );
+  assert.equal(
+    resolve(resolveOutputPath("clip.mp4", "a.bbl", 1, true, "prores4444-12")),
+    resolve(OUT_DIR, "clip.mov")
+  );
 
-  // The user's stem survives; the extension follows the mode.
-  assert.equal(resolve(named), resolve(OUT_DIR, "clip.mp4"));
+  // Unknown ids fall back to the default format (.webm).
+  assert.equal(
+    resolve(resolveOutputPath("clip.mp4", "a.bbl", 1, true, "banana")),
+    resolve(OUT_DIR, "clip.webm")
+  );
+
+  // Log-based defaults carry the format extension too.
+  const fallback = resolveOutputPath("", "log/file.bbl", 2, true, "png-rgba");
+
+  assert.match(fallback, /file-flight2-overlay\.mov$/);
+});
+
+test("suggestOutputPath picks the extension per format", () => {
+  assert.match(
+    suggestOutputPath("a.bbl", 1, true, "vp9-yuva420p"),
+    /overlay\.webm$/
+  );
+  assert.match(
+    suggestOutputPath("a.bbl", 1, true, "png-rgba"),
+    /overlay\.mov$/
+  );
+  assert.match(
+    suggestOutputPath("a.bbl", 1, true, "prores4444-12"),
+    /overlay\.mov$/
+  );
+
+  // Null format falls back to the registry default (.webm).
+  assert.match(
+    suggestOutputPath("a.bbl", 1, true),
+    /overlay\.webm$/
+  );
 });

@@ -11,12 +11,11 @@
 //
 //   alpha (transparent background)
 //     ffmpeg -f rawvideo -pix_fmt rgba -s WxH -r fps \
-//       -i pipe:0 -c:v prores_ks -profile:v 4444 \
-//       -pix_fmt yuva444p10le out.mov
+//       -i pipe:0 <encoder args from outputFormats.js> out.mov|.webm
 //
-// ProRes 4444 carries a full alpha channel — the format
-// editors (Premiere, FCP, Resolve, VEGAS) key as an
-// overlay. MP4/H.264 cannot store alpha.
+// Alpha formats (src/render/outputFormats.js) carry a full
+// alpha channel — editors (Premiere, FCP, Resolve, VEGAS)
+// key them as an overlay. MP4/H.264 cannot store alpha.
 //
 // No image library: every frame is a Uint8Array sized
 // WIDTH * HEIGHT * 4, written in playback order.
@@ -24,29 +23,35 @@
 // ======================================================
 
 import { spawn } from "node:child_process";
+import { resolveOutputFormat } from "./outputFormats.js";
 
 export class VideoWriter {
   /**
-   * @param {string} outputPath destination .mp4 or .mov
+   * @param {string} outputPath destination .mp4, .mov or .webm
    * @param {number} fps        frames per second
    * @param {number} width      frame width in pixels (even)
    * @param {number} height     frame height in pixels (even)
    * @param {object} [options]
-   * @param {boolean} [options.alpha] encode with alpha
-   *        (ProRes 4444 .mov) instead of H.264 .mp4
+   * @param {boolean} [options.alpha] encode with alpha instead
+   *        of background-filled H.264 .mp4
+   * @param {string} [options.format] codec id from
+   *        outputFormats.js (alpha default: png-rgba)
    */
-  constructor(outputPath, fps, width, height, { alpha = false } = {}) {
+  constructor(outputPath, fps, width, height, { alpha = false, format } = {}) {
     this.outputPath = outputPath;
     this.fps = fps;
     this.width = width;
     this.height = height;
     this.alpha = alpha === true;
+    // The opaque H.264 path stays hardcoded (it predates the
+    // registry); alpha codecs resolve through it.
+    this.format = this.alpha ? resolveOutputFormat(format) : null;
     this.frameSize = width * height * 4;
     this.framesWritten = 0;
     this.closed = false;
 
     const encoderArgs = this.alpha
-      ? ["-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le", "-vendor", "apl0"]
+      ? [...this.format.args]
       : ["-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p"];
 
     // faststart's moov rewrite only helps web streaming;
@@ -96,6 +101,10 @@ export class VideoWriter {
    * Write one frame (Uint8Array of WIDTH*HEIGHT*4 RGBA bytes).
    * Backpressure-aware: returns a promise when the pipe
    * buffer fills, so the caller can await between frames.
+   * If ffmpeg dies while we wait for a drain, the wait
+   * resolves through the exit race and throws with the
+   * encoder's stderr — a dead encoder must never hang the
+   * render loop.
    */
   async writeFrame(frame) {
     if (this.closed) {
@@ -111,10 +120,28 @@ export class VideoWriter {
     const stdin = this.ffmpeg.stdin;
 
     if (!stdin.write(frame)) {
-      await new Promise((resolve) => stdin.once("drain", resolve));
+      await Promise.race([
+        new Promise((resolve) => stdin.once("drain", resolve)),
+        this.exited
+      ]);
+
+      if (this.exitCode !== undefined && this.exitCode !== 0) {
+        throw new Error(this.errorMessage());
+      }
     }
 
     this.framesWritten += 1;
+  }
+
+  /** Full error text for a non-zero ffmpeg exit. */
+  errorMessage() {
+    const stderr = Buffer
+      .concat(this.stderrChunks)
+      .toString()
+      .trim();
+
+    return `ffmpeg exited with code ${this.exitCode}` +
+      (stderr ? `: ${stderr}` : "");
   }
 
   /** Finish encoding; resolves when ffmpeg exits. */
@@ -128,15 +155,7 @@ export class VideoWriter {
     await this.exited;
 
     if (this.exitCode !== 0) {
-      const stderr = Buffer
-        .concat(this.stderrChunks)
-        .toString()
-        .trim();
-
-      throw new Error(
-        `ffmpeg exited with code ${this.exitCode}` +
-          (stderr ? `: ${stderr}` : "")
-      );
+      throw new Error(this.errorMessage());
     }
   }
 

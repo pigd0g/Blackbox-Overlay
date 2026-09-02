@@ -19,6 +19,11 @@ import { join } from "node:path";
 import { checkFfmpegAvailable, renderLayoutVideo } from "../src/render/videoRender.js";
 import { normalizeLayout, DEFAULT_LAYOUT, createItem } from "../src/render/layout/layoutSchema.js";
 
+// Render tests are slow (ffmpeg encodes); set RENDER_TESTS=1 to
+// include them. Default: skipped — flip on before a release or
+// when verifying codec behaviour manually.
+const RUN_RENDER_TESTS = process.env.RENDER_TESTS === "1";
+
 function ffmpegAvailable() {
   try {
     execFileSync("ffprobe", ["-version"], { stdio: "ignore" });
@@ -86,7 +91,7 @@ function testLayout(alpha) {
   return normalizeLayout(doc).layout;
 }
 
-test("renderLayoutVideo produces a valid mp4 at the layout size", { skip: !canRender }, async () => {
+test("renderLayoutVideo produces a valid mp4 at the layout size", { skip: !canRender || !RUN_RENDER_TESTS }, async () => {
   const directory = mkdtempSync(join(tmpdir(), "rfbvo-test-"));
   const outputPath = join(directory, "overlay.mp4");
 
@@ -124,9 +129,9 @@ test("renderLayoutVideo produces a valid mp4 at the layout size", { skip: !canRe
   }
 });
 
-test("renderLayoutVideo with alpha produces ProRes 4444 .mov + preview", { skip: !canRender }, async () => {
+test("renderLayoutVideo with alpha defaults to VP9 .webm + preview", { skip: !canRender || !RUN_RENDER_TESTS }, async () => {
   const directory = mkdtempSync(join(tmpdir(), "rfbvo-alpha-"));
-  const outputPath = join(directory, "overlay.mov");
+  const outputPath = join(directory, "overlay.webm");
 
   try {
     const flight = syntheticFlight(0.5, 10);
@@ -138,23 +143,14 @@ test("renderLayoutVideo with alpha produces ProRes 4444 .mov + preview", { skip:
     });
 
     assert.equal(result.frames, 5);
-    assert.ok(existsSync(outputPath), "output mov missing");
+    assert.ok(existsSync(outputPath), "output webm missing");
 
-    const probe = JSON.parse(
-      execFileSync(
-        "ffprobe",
-        ["-v", "error", "-show_streams", "-of", "json", outputPath],
-        { encoding: "utf8" }
-      )
-    );
+    const video = probeVideo(outputPath);
 
-    const video = probe.streams.find((s) => s.codec_type === "video");
-
-    assert.equal(video.codec_name, "prores");
+    assert.equal(video.codec_name, "vp9");
     assert.equal(video.width, 320);
     assert.equal(video.height, 180);
-    assert.match(video.pix_fmt, /^yuva4444?/);
-    assert.match(String(video.profile), /4444/);
+    assert.equal(String(video.tags?.alpha_mode ?? ""), "1");
 
     // The flattened preview exists and is playable H.264.
     const previewPath = result.previewPath;
@@ -176,9 +172,85 @@ test("renderLayoutVideo with alpha produces ProRes 4444 .mov + preview", { skip:
   }
 });
 
-test("renderLayoutVideo with preview:false skips the flattened preview", { skip: !canRender }, async () => {
-  const directory = mkdtempSync(join(tmpdir(), "rfbvo-nopreview-"));
+test("renderLayoutVideo format=prores4444-12 produces ProRes .mov", { skip: !canRender || !RUN_RENDER_TESTS }, async () => {
+  const directory = mkdtempSync(join(tmpdir(), "rfbvo-fmt-"));
   const outputPath = join(directory, "overlay.mov");
+
+  try {
+    const result = await renderLayoutVideo(syntheticFlight(0.5, 10), outputPath, {
+      fps: 10,
+      layout: testLayout(true),
+      format: "prores4444-12"
+    });
+
+    assert.equal(result.frames, 5);
+    assert.ok(existsSync(outputPath));
+
+    const video = probeVideo(outputPath);
+
+    assert.equal(video.codec_name, "prores");
+    assert.match(video.pix_fmt, /^yuva444/);
+    assert.match(String(video.profile), /4444/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("renderLayoutVideo format=vp9-yuva420p writes .webm with alpha", { skip: !canRender || !RUN_RENDER_TESTS }, async () => {
+  const directory = mkdtempSync(join(tmpdir(), "rfbvo-vp9-"));
+  const outputPath = join(directory, "overlay.webm");
+
+  try {
+    const result = await renderLayoutVideo(syntheticFlight(0.5, 10), outputPath, {
+      fps: 10,
+      layout: testLayout(true),
+      format: "vp9-yuva420p"
+    });
+
+    assert.equal(result.frames, 5);
+    assert.ok(existsSync(outputPath), "output webm missing");
+
+    const video = probeVideo(outputPath);
+
+    assert.equal(video.codec_name, "vp9");
+    assert.equal(video.width, 320);
+    assert.equal(video.height, 180);
+
+    // Alpha rides WebM metadata rather than the pix_fmt name.
+    assert.equal(String(video.tags?.alpha_mode ?? ""), "1");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("renderLayoutVideo rejects unknown format ids", async () => {
+  const flight = syntheticFlight(0.5, 10);
+
+  await assert.rejects(
+    renderLayoutVideo(flight, "out/overlay.mov", {
+      fps: 10,
+      layout: testLayout(true),
+      format: "banana"
+    }),
+    /Unknown output format/
+  );
+});
+
+function probeVideo(path) {
+  const probe = JSON.parse(
+    execFileSync(
+      "ffprobe",
+      ["-v", "error", "-select_streams", "v:0", "-show_streams", "-of", "json", path],
+      { encoding: "utf8" }
+    )
+  );
+
+  return probe.streams[0];
+}
+
+test("renderLayoutVideo with preview:false skips the flattened preview", { skip: !canRender || !RUN_RENDER_TESTS }, async () => {
+  const directory = mkdtempSync(join(tmpdir(), "rfbvo-nopreview-"));
+  const outputPath = join(directory, "overlay.webm");
 
   try {
     const flight = syntheticFlight(0.5, 10);
@@ -192,7 +264,7 @@ test("renderLayoutVideo with preview:false skips the flattened preview", { skip:
 
     assert.equal(result.frames, 5);
     assert.equal(result.previewPath, undefined, "no preview path returned");
-    assert.ok(existsSync(outputPath), "the .mov itself is still written");
+    assert.ok(existsSync(outputPath), "the .webm itself is still written");
     assert.equal(existsSync(join(directory, "overlay.preview.mp4")), false);
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -208,7 +280,7 @@ test("renderLayoutVideo rejects stick layouts on flights without rcCommand", asy
       renderLayoutVideo(
         { mainFieldNames: ["time"], mainFrames: [[0]], durationSeconds: 1, index: 0 },
         outputPath,
-        { fps: 10, layout: testLayout(false) }
+        { fps: 10, layout: testLayout(false), format: "h264-yuv420p" }
       ),
       /rcCommand/
     );
@@ -217,9 +289,9 @@ test("renderLayoutVideo rejects stick layouts on flights without rcCommand", asy
   }
 });
 
-test("renderLayoutVideo renders non-stick layouts without rcCommand", { skip: !canRender }, async () => {
+test("renderLayoutVideo renders non-stick layouts without rcCommand", { skip: !canRender || !RUN_RENDER_TESTS }, async () => {
   const directory = mkdtempSync(join(tmpdir(), "rfbvo-nostick-"));
-  const outputPath = join(directory, "overlay.mov");
+  const outputPath = join(directory, "overlay.webm");
 
   try {
     const doc = DEFAULT_LAYOUT();
@@ -251,7 +323,11 @@ test("alpha render to an .mp4 path is rejected clearly", async () => {
   const flight = syntheticFlight(0.5, 10);
 
   await assert.rejects(
-    renderLayoutVideo(flight, "out/wrong.mp4", { fps: 10, layout: testLayout(true) }),
+    renderLayoutVideo(flight, "out/wrong.mp4", {
+      fps: 10,
+      layout: testLayout(true),
+      format: "png-rgba"
+    }),
     /\.mov/
   );
 });

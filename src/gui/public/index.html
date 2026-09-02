@@ -121,20 +121,25 @@
         </div>
       </div>
 
-      <!-- Layout library: presets + saved layouts, above themes -->
+      <!-- Layout library: presets + saved layouts, above themes.
+           Collapsible; the action buttons stay visible when collapsed. -->
       <section class="look-pane layouts-pane" aria-label="Layout library">
         <div class="layouts-head">
-          <h3 class="group-title">LAYOUT</h3>
+          <button type="button" class="group-title layouts-toggle" id="layouts-toggle"
+                  aria-expanded="true" aria-controls="layouts-body"
+                  title="Collapse or expand the layout library"><span class="chev">▾</span> LAYOUT</button>
           <div class="layouts-actions">
             <button type="button" class="btn btn-tiny" id="layout-new-btn" title="Start a fresh empty layout">New</button>
             <button type="button" class="btn btn-tiny" id="layout-save-btn" title="Save the current layout">Save</button>
             <button type="button" class="btn btn-tiny" id="layout-delete-btn" title="Delete the selected user layout" disabled>Delete</button>
           </div>
         </div>
-        <div class="layouts-hint" id="layouts-hint">Pick a preset or one of your saved layouts.</div>
-        <div class="layout-stack" id="preset-stack" role="listbox" aria-label="Built-in layout presets"></div>
-        <h3 class="group-title layout-user-title" id="user-title" hidden>MY LAYOUTS</h3>
-        <div class="layout-stack" id="user-stack" role="listbox" aria-label="Your saved layouts"></div>
+        <div class="layouts-body" id="layouts-body">
+          <div class="layouts-hint" id="layouts-hint">Pick a preset or one of your saved layouts.</div>
+          <div class="layout-stack" id="preset-stack" role="listbox" aria-label="Built-in layout presets"></div>
+          <h3 class="group-title layout-user-title" id="user-title" hidden>MY LAYOUTS</h3>
+          <div class="layout-stack" id="user-stack" role="listbox" aria-label="Your saved layouts"></div>
+        </div>
       </section>
 
       <!-- Theme + font selection sits ABOVE the color customizer -->
@@ -167,14 +172,19 @@
           <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
           <span class="switch-label">Transparent</span>
         </label>
-        <p class="out-hint" id="alpha-hint">ProRes 4444 .mov with alpha</p>
+        <p class="out-hint" id="alpha-hint">Transparent overlay render</p>
+        <div class="out-row" id="format-row">
+          <label class="lbl" for="format-select">FMT</label>
+          <select class="fld" id="format-select" aria-describedby="format-hint"></select>
+        </div>
+        <p class="out-hint" id="format-hint">Codec for the render</p>
         <label class="alpha-row" for="shadow-toggle">
           <input type="checkbox" class="switch-input" id="shadow-toggle">
           <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
           <span class="switch-label">Text shadow</span>
         </label>
         <label class="alpha-row" for="preview-toggle">
-          <input type="checkbox" class="switch-input" id="preview-toggle" checked>
+          <input type="checkbox" class="switch-input" id="preview-toggle">
           <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
           <span class="switch-label">Browser preview</span>
         </label>

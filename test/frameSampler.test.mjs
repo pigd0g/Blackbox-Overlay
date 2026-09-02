@@ -89,7 +89,7 @@ test("frameAt rejects non-finite times", () => {
   assert.equal(sampler.frameAt(Number.NaN), null);
 });
 
-test("sampler reproduces the video render output", async () => {
+test("sampler reproduces the video render output", { skip: process.env.RENDER_TESTS !== "1" }, async () => {
   if (!hasFixture) return;
 
   const dir = mkdtempSync(join(tmpdir(), "rfbvo-sampler-"));
@@ -102,7 +102,12 @@ test("sampler reproduces the video render output", async () => {
     const result = await renderLayoutVideo(
       flight,
       join(dir, "sampler-check.mov"),
-      { fps: 10, layout: normalizeLayout(doc).layout, onProgress: () => {} }
+      {
+        fps: 10,
+        layout: normalizeLayout(doc).layout,
+        format: "png-rgba",
+        onProgress: () => {}
+      }
     );
 
     assert.ok(result.frames > 10);

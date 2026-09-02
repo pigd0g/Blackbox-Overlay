@@ -9,10 +9,11 @@
 // everything into ffmpeg.
 //
 // Alpha renders (layout.alpha === true, the default) write
-// ProRes 4444 .mov, then flatten a browser-playable
-// .preview.mp4 (checkerboard composite) in a single ffmpeg
-// post-pass; opaque renders are H.264 .mp4 filled with the
-// theme background.
+// the chosen alpha codec (src/render/outputFormats.js —
+// ProRes 4444 12/10-bit, PNG, VP9), then flatten a
+// browser-playable .preview.mp4 (checkerboard composite)
+// in a single ffmpeg post-pass; opaque renders are H.264
+// .mp4 filled with the theme background.
 //
 // ======================================================
 
@@ -24,6 +25,7 @@ import {
   checkFfmpegAvailable,
   flattenAlphaPreview
 } from "./videoWriter.js";
+import { outputFormatOrThrow, DEFAULT_OUTPUT_FORMAT as DEFAULT_ALPHA_FORMAT } from "./outputFormats.js";
 import { createFlightSampler } from "./frameSampler.js";
 import { createFieldStats } from "./layout/fieldStats.js";
 import { buildSceneState } from "./layout/sceneState.js";
@@ -34,10 +36,10 @@ export const DEFAULT_FPS = 30;
 
 /**
  * Default output path next to the log: alpha renders land
- * as <logBase>-overlay.mov (ProRes 4444), otherwise
- * <logBase>-overlay.mp4.
+ * as <logBase>-overlay.<ext> (per the chosen format),
+ * otherwise <logBase>-overlay.mp4.
  */
-export function defaultVideoPath(logFilePath, alpha = false) {
+export function defaultVideoPath(logFilePath, alpha = false, formatId = null) {
   const dot = logFilePath.lastIndexOf(".");
 
   const base =
@@ -45,7 +47,14 @@ export function defaultVideoPath(logFilePath, alpha = false) {
       ? logFilePath.slice(0, dot)
       : logFilePath;
 
-  return `${base}-overlay.${alpha ? "mov" : "mp4"}`;
+  let extension = "mp4";
+
+  if (alpha) {
+    const format = outputFormatOrThrow(formatId ?? DEFAULT_ALPHA_FORMAT);
+    extension = format.extension.slice(1);
+  }
+
+  return `${base}-overlay.${extension}`;
 }
 
 /**
@@ -65,12 +74,14 @@ export function previewPathFor(outputPath) {
  * Render a decoded flight through a layout to video.
  *
  * @param {object}  flight          decoded flight from decodeBblFile()
- * @param {string}  outputPath      destination .mp4 or .mov
+ * @param {string}  outputPath      destination .mp4, .mov or .webm
  * @param {object}  [options]
  * @param {object}  [options.layout]    normalized layout doc
  *                  (canvas/grid/alpha/shadow/theme/items);
  *                  a missing layout renders an empty canvas
  * @param {number}  [options.fps]   output frame rate (default 30)
+ * @param {string}  [options.format] alpha codec id from
+ *                  outputFormats.js (default png-rgba)
  * @param {boolean} [options.preview] alpha renders also transcode
  *                  a browser-playable .preview.mp4 (default true)
  * @param {(msg: string) => void} [options.onProgress]
@@ -81,16 +92,19 @@ export async function renderLayoutVideo(flight, outputPath, options = {}) {
   const fps = options.fps ?? DEFAULT_FPS;
   const alpha = layout.alpha === true;
   const wantPreview = options.preview !== false;
+  const format = alpha ? outputFormatOrThrow(options.format ?? DEFAULT_ALPHA_FORMAT) : null;
 
   if (!Number.isFinite(fps) || fps <= 0) {
     throw new Error(`fps must be a positive number, got ${fps}`);
   }
 
-  // ProRes 4444 does not live in an .mp4 container; guard
+  // Alpha codecs do not live in an .mp4 container; guard
   // the combination early with a clear error instead of
   // letting ffmpeg fail cryptically at mux time.
   if (alpha && outputPath.toLowerCase().endsWith(".mp4")) {
-    throw new Error("Alpha renders need a .mov output path (ProRes 4444), not .mp4.");
+    throw new Error(
+      `Alpha renders need a ${format.extension} output path (${format.label}), not .mp4.`
+    );
   }
 
   // The sticks need rcCommand telemetry; a layout without
@@ -135,7 +149,10 @@ export async function renderLayoutVideo(flight, outputPath, options = {}) {
     mkdirSync(outputDirectory, { recursive: true });
   }
 
-  const writer = new VideoWriter(outputPath, fps, width, height, { alpha });
+  const writer = new VideoWriter(outputPath, fps, width, height, {
+    alpha,
+    format: format?.id
+  });
 
   try {
     for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
@@ -166,9 +183,10 @@ export async function renderLayoutVideo(flight, outputPath, options = {}) {
 
   if (alpha && wantPreview) {
     // The browser-playable flattened preview is transcoded
-    // from the finished .mov in one ffmpeg pass — the render
-    // loop pipes each frame exactly once. A failure here
-    // errors the job; the .mov itself is already complete.
+    // from the finished output in one ffmpeg pass — the
+    // render loop pipes each frame exactly once. A failure
+    // here errors the job; the alpha file itself is already
+    // complete.
     options.onProgress?.("encoding preview...");
 
     await flattenAlphaPreview(

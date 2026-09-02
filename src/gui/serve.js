@@ -70,6 +70,7 @@ const MIME = {
   ".png": "image/png",
   ".ico": "image/x-icon",
   ".mp4": "video/mp4",
+  ".webm": "video/webm",
   ".ttf": "font/ttf"
 };
 
@@ -255,6 +256,7 @@ async function handleApi(req, res, url) {
       ffmpeg,
       themes: catalog.themes,
       fonts: catalog.fonts,
+      outputFormats: catalog.outputFormats,
       defaultLayout: catalog.defaultLayout,
       home: tempDir()
     });
@@ -398,13 +400,15 @@ async function handleApi(req, res, url) {
     const alpha = body.layout.alpha === true;
 
     // Renders always land in <cwd>/out/ — a bare name keeps
-    // its stem, anything path-like is flattened. Alpha
-    // renders (transparent background) encode ProRes 4444.
+    // its stem, anything path-like is flattened. The codec
+    // comes from the FMT dropdown (alpha codecs when
+    // transparent, H.264 when opaque).
     const output = resolveOutputPath(
       body.output,
       sourceFile,
       body.flight,
-      alpha
+      alpha,
+      body.format
     );
 
     try {
@@ -416,7 +420,8 @@ async function handleApi(req, res, url) {
         output,
         // Opt-out switch for the flattened .preview.mp4 that
         // alpha renders produce for in-browser playback.
-        preview: body.preview !== false
+        preview: body.preview !== false,
+        format: body.format
       });
 
       return sendJson(res, 202, started);
@@ -451,9 +456,10 @@ async function handleApi(req, res, url) {
     }
 
     const stats = statSync(filePath);
+    const extension = extname(filePath).toLowerCase();
 
     res.writeHead(200, {
-      "Content-Type": "video/mp4",
+      "Content-Type": MIME[extension] ?? "video/mp4",
       "Content-Length": stats.size,
       "Cache-Control": "no-store"
     });

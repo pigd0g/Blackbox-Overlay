@@ -23,6 +23,11 @@ const FIXTURE = join(
 
 const hasFixture = existsSync(FIXTURE);
 
+// Render tests are slow (ffmpeg encodes); set RENDER_TESTS=1 to
+// include them (e.g. `npm test` before a release, or
+// $env:RENDER_TESTS="1" in PowerShell). Default: skipped.
+const RUN_RENDER_TESTS = process.env.RENDER_TESTS === "1";
+
 let server = null;
 let base = null;
 
@@ -476,7 +481,7 @@ async function consumeSse(url, onEvent, timeoutMs = 120_000) {
   }
 }
 
-test("render job runs end-to-end with SSE progress and downloadable media", async () => {
+test("render job runs end-to-end with SSE progress and downloadable media", { skip: !RUN_RENDER_TESTS }, async () => {
   if (!hasFixture) return;
 
   const state = await (await fetch(`${base}/api/state`)).json();
@@ -486,6 +491,7 @@ test("render job runs end-to-end with SSE progress and downloadable media", asyn
   }
 
   const layout = testLayout();
+  layout.alpha = false; // H.264 .mp4 is the opaque path.
   layout.theme = "charcoal";
   layout.themeOverrides = { "stick.dot": "#00FF88" };
 
@@ -500,7 +506,10 @@ test("render job runs end-to-end with SSE progress and downloadable media", asyn
         flight: 1,
         fps: 10,
         layout,
-        output
+        output,
+        // Explicit H.264: the .mp4 path is only reachable when
+        // Transparency is off.
+        format: "h264-yuv420p"
       })
     });
 
@@ -551,7 +560,7 @@ test("media endpoint refuses paths that never rendered", async () => {
   assert.equal(response.status, 404);
 });
 
-test("server survives SSE close after the render settles", async () => {
+test("server survives SSE close after the render settles", { skip: !RUN_RENDER_TESTS }, async () => {
   if (!hasFixture) return;
 
   const state = await (await fetch(`${base}/api/state`)).json();
@@ -570,7 +579,9 @@ test("server survives SSE close after the render settles", async () => {
         flight: 1,
         fps: 10,
         layout,
-        output
+        output,
+        // PNG alpha: deterministic .mov output for the cleanup.
+        format: "png-rgba"
       })
     });
 
@@ -592,7 +603,7 @@ test("server survives SSE close after the render settles", async () => {
       }).catch(rejectPromise);
     });
 
-    // Alpha renders must land as .mov (ProRes 4444).
+    // PNG alpha renders land as .mov.
     assert.match(finalJob.output, /\.mov$/);
     assert.ok(existsSync(finalJob.output));
 

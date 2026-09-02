@@ -17,6 +17,10 @@ import { axisPairCaption } from "./valueFormat.js";
 export const CORNER_RADIUS_MD = 6;
 export const STICK_CAPTION_GAP = 4;
 
+// Dot radius as a fraction of the box side: 15px at the 200px
+// med size, 9px small, 21px large (floor 4px for tiny boxes).
+export const STICK_DOT_FRACTION = 0.075;
+
 /**
  * Paint one stick display.
  *
@@ -54,9 +58,9 @@ export function paintStickWidget(
   pixelLineH(buf, width, height, x0 + CORNER_RADIUS_MD, x0 + side - 1 - CORNER_RADIUS_MD, Math.round(cy), colors.crosshair);
   pixelLineV(buf, width, height, Math.round(cx), y0 + CORNER_RADIUS_MD, y0 + side - 1 - CORNER_RADIUS_MD, colors.crosshair);
 
-  // Dot at the channel pair; radius 15px = v1 parity for
-  // the 200px med size, scaled gently with widget size.
-  const dotRadius = 15;
+  // Dot at the channel pair; radius scales with the widget
+  // size (STICK_DOT_FRACTION of the box side).
+  const dotRadius = Math.max(4, Math.round(side * STICK_DOT_FRACTION));
   const inset = Math.max(4, half - dotRadius - 4);
   const xVal = channelValue(channels, props.xChannel);
   const yVal = channelValue(channels, props.yChannel);

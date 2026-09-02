@@ -298,6 +298,44 @@ test("stick dot follows the selected channels", () => {
   assert.deepEqual(px(181, 100), [232, 62, 99, 255], "dot at full right deflection");
 });
 
+test("stick dot radius scales with the widget size", () => {
+  // Small (120px → r 9): a point 12px off-centre on the axis
+  // falls outside the dot, leaving the crosshair visible.
+  const smallDoc = DEFAULT_LAYOUT();
+  smallDoc.canvas = { width: 400, height: 220 };
+  smallDoc.items.push(createItem("stick", { col: 0, row: 0, size: "small" }));
+
+  const small = normalizeLayout(smallDoc);
+  const smallFrame = paintScene(small.layout, small.boxes, buildSceneState({}), resolveTheme("default"), { alpha: true });
+  const sPx = (x, y) => {
+    const o = (y * 400 + x) * 4;
+    return [smallFrame[o], smallFrame[o + 1], smallFrame[o + 2], smallFrame[o + 3]];
+  };
+
+  // Small centre: (60, 60) in the 100x100 cell 0,0.
+  assert.deepEqual(sPx(60, 60), [232, 62, 99, 255], "small dot paints the centre");
+  // r 15 would cover (60, 72); r 9 leaves the crosshair there.
+  assert.deepEqual(sPx(60, 72), [127, 140, 135, 255], "small dot stays inside the old radius");
+
+  // Large (280px → r 21): a point 18px off-centre on the axis
+  // is inside the dot (outside the old r 15).
+  const largeDoc = DEFAULT_LAYOUT();
+  largeDoc.canvas = { width: 600, height: 400 };
+  largeDoc.grid = { cols: 2, rows: 1 };
+  largeDoc.items.push(createItem("stick", { col: 0, row: 0, size: "large" }));
+
+  const large = normalizeLayout(largeDoc);
+  const largeFrame = paintScene(large.layout, large.boxes, buildSceneState({}), resolveTheme("default"), { alpha: true });
+  const lPx = (x, y) => {
+    const o = (y * 600 + x) * 4;
+    return [largeFrame[o], largeFrame[o + 1], largeFrame[o + 2], largeFrame[o + 3]];
+  };
+
+  // Large centre: (140, 140) — box anchored at cell origin,
+  // side 280.
+  assert.deepEqual(lPx(140 + 18, 140), [232, 62, 99, 255], "large dot covers beyond the old radius");
+});
+
 function createSampler(flight) {
   // Minimal synchronous sampler: row 0 only.
   return {

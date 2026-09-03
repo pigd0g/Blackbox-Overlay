@@ -233,3 +233,74 @@ test("files: a saved layout JSON round-trips through normalize", () => {
 
   rmSync(dir, { recursive: true, force: true });
 });
+
+// ------------------------------------------------------
+// Sync drift config (rides the layout doc)
+// ------------------------------------------------------
+
+test("default layout carries sync drift defaults (mode off)", () => {
+  const { layout } = normalizeLayout(DEFAULT_LAYOUT());
+
+  assert.equal(layout.sync.mode, "off");
+  assert.equal(layout.sync.calculate.fps, 60);
+  assert.equal(layout.sync.calculate.disarmGracePeriod, 0);
+  assert.equal(layout.sync.manual.clockDriftPercent, 0);
+});
+
+test("old docs without sync stay mode off, silently", () => {
+  const doc = DEFAULT_LAYOUT();
+
+  delete doc.sync;
+
+  const { layout, warnings } = normalizeLayout(doc);
+
+  assert.equal(layout.sync.mode, "off");
+  assert.equal(warnings.length, 0);
+});
+
+test("sync config normalizes with clamps + warnings", () => {
+  const doc = DEFAULT_LAYOUT();
+  doc.sync = {
+    mode: "calculate",
+    bogus: 1,
+    calculate: {
+      fps: 55,
+      start: { minutes: 0, seconds: 12, frame: 100 },
+      end: { minutes: 1, seconds: 48, frame: 42 },
+      disarmGracePeriod: -3
+    },
+    manual: { clockDriftPercent: 9 }
+  };
+
+  const { layout, warnings } = normalizeLayout(doc);
+  const sync = layout.sync;
+
+  assert.equal(sync.mode, "calculate");
+  assert.equal(sync.calculate.fps, 60);
+  assert.equal(sync.calculate.start.frame, 59);
+  assert.equal(sync.calculate.disarmGracePeriod, 0);
+  assert.ok(warnings.some((w) => /sync/.test(w)));
+  assert.ok(warnings.some((w) => /sync: unknown property dropped \(bogus\)/.test(w)));
+  assert.ok(!("bogus" in sync));
+});
+
+test("sync config round-trips through save/load normalize", () => {
+  const doc = DEFAULT_LAYOUT();
+  doc.sync = {
+    mode: "manual",
+    calculate: {
+      fps: 120,
+      start: { minutes: 0, seconds: 12, frame: 18 },
+      end: { minutes: 1, seconds: 48, frame: 42 },
+      disarmGracePeriod: 5
+    },
+    manual: { clockDriftPercent: -1.31 }
+  };
+
+  const once = normalizeLayout(doc);
+  const twice = normalizeLayout(once.layout);
+
+  assert.deepEqual(twice.layout, once.layout);
+  assert.equal(twice.layout.sync.manual.clockDriftPercent, -1.31);
+  assert.equal(twice.layout.sync.mode, "manual");
+});

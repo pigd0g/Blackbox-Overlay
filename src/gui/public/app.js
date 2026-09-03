@@ -74,6 +74,18 @@ const els = {
   previewToggle: $("preview-toggle"),
   fpsInput: $("fps-input"),
   outputInput: $("output-input"),
+  syncModeGroup: $("sync-mode-group"),
+  syncFpsSelect: $("sync-fps-select"),
+  syncStartInput: $("sync-start-input"),
+  syncEndInput: $("sync-end-input"),
+  syncDriftInput: $("sync-drift-input"),
+  syncCalculate: $("sync-calculate"),
+  syncManual: $("sync-manual"),
+  syncReadouts: $("sync-readouts"),
+  syncWarn: $("sync-warn"),
+  syncDriftOut: $("sync-drift-out"),
+  syncCorr60Out: $("sync-corr60-out"),
+  syncCorrEndOut: $("sync-corrend-out"),
   // telemetry rail
   addStickBtn: $("add-stick-btn"),
   addTextBtn: $("add-text-btn"),
@@ -268,6 +280,16 @@ function defaultLayoutObject() {
     shadow: false,
     theme: "default",
     font: "vt323",
+    sync: {
+      mode: "off",
+      calculate: {
+        fps: 60,
+        start: { minutes: 0, seconds: 0, frame: 0 },
+        end: { minutes: 0, seconds: 0, frame: 0 },
+        disarmGracePeriod: 0,
+      },
+      manual: { clockDriftPercent: 0 },
+    },
     themeOverrides: {},
     items: [],
   };
@@ -303,6 +325,8 @@ function scheduleSync(delay = 120) {
       refreshProperties();
       refreshLayoutsHint();
       updateLayoutButtons();
+      syncSyncInputs();
+      scheduleSyncEvaluate();
       requestPreview();
     } catch (error) {
       els.renderMsg.textContent = error.message;
@@ -2322,6 +2346,7 @@ async function loadLog(path) {
     state.flight = null;
     state.t = 0;
     state.previewJob = (state.previewJob ?? 0) + 1;
+    renderSyncReadouts(null);
 
     els.logPill.hidden = false;
     els.logPill.textContent = payload.file.split(/[\\/]/).pop();
@@ -2421,6 +2446,8 @@ function selectFlight(flightNumber) {
 
   syncTransport();
   updateOutputDefault();
+  syncSyncInputs();
+  scheduleSyncEvaluate(0);
   requestPreview();
 }
 
@@ -2487,6 +2514,221 @@ els.outputInput.addEventListener("input", () => {
 els.fpsInput.addEventListener("change", () => {
   els.fpsInput.value = String(normalizeFps(els.fpsInput.value));
 });
+
+/* ------------------------------------------------------
+ * Sync drift compensation (GUI layer)
+ *
+ * The layout doc's `sync` key is the single source of state;
+ * the server normalizes it and /api/sync/evaluate derives
+ * the readouts — the browser never duplicates the math. It
+ * only parses the mm:ss:frame text inputs into
+ * {minutes, seconds, frame}.
+ * ------------------------------------------------------ */
+
+const SYNC_MODES = ["off", "calculate", "manual"];
+
+/** "mm:ss:frame" → {minutes, seconds, frame} or null. */
+function parseTimestampText(text) {
+  const match = String(text ?? "").trim().match(/^(\d+):(\d{1,2}):(\d{1,3})$/);
+
+  if (!match) return null;
+
+  return {
+    minutes: Number(match[1]),
+    seconds: Number(match[2]),
+    frame: Number(match[3]),
+  };
+}
+
+/** {minutes, seconds, frame} → "mm:ss:frame". */
+function formatTimestampText(ts) {
+  if (!ts || typeof ts !== "object") return "";
+
+  const minutes = Math.max(0, Math.round(Number(ts.minutes)) || 0);
+  const seconds = Math.max(0, Math.round(Number(ts.seconds)) || 0);
+  const frame = Math.max(0, Math.round(Number(ts.frame)) || 0);
+
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}:${String(frame).padStart(2, "0")}`;
+}
+
+function syncMode() {
+  return state.layout?.sync?.mode ?? "off";
+}
+
+function setSyncMode(mode) {
+  if (!state.layout?.sync || !SYNC_MODES.includes(mode)) return;
+
+  state.layout.sync.mode = mode;
+  syncSyncInputs();
+  scheduleSync(0);
+  scheduleSyncEvaluate();
+}
+
+function syncSyncInputs() {
+  const sync = state.layout?.sync;
+  const mode = sync?.mode ?? "off";
+
+  for (const button of els.syncModeGroup.querySelectorAll(".sync-mode")) {
+    button.setAttribute("aria-checked", String(button.dataset.mode === mode));
+  }
+
+  els.syncCalculate.hidden = mode !== "calculate";
+  els.syncManual.hidden = mode !== "manual";
+
+  // Readouts show for calculate + manual (with feedback even
+  // when the inputs are not yet valid); hidden for off.
+  els.syncReadouts.hidden = mode === "off";
+
+  if (!sync) return;
+
+  if (document.activeElement !== els.syncFpsSelect) {
+    els.syncFpsSelect.value = String(sync.calculate?.fps ?? 60);
+  }
+
+  if (document.activeElement !== els.syncStartInput) {
+    els.syncStartInput.value = formatTimestampText(sync.calculate?.start);
+    els.syncStartInput.classList.remove("input-error");
+  }
+
+  if (document.activeElement !== els.syncEndInput) {
+    els.syncEndInput.value = formatTimestampText(sync.calculate?.end);
+    els.syncEndInput.classList.remove("input-error");
+  }
+
+  if (document.activeElement !== els.syncDriftInput) {
+    els.syncDriftInput.value = String(sync.manual?.clockDriftPercent ?? 0);
+  }
+}
+
+function onSyncCalculateField() {
+  const sync = state.layout?.sync;
+
+  if (!sync) return;
+
+  const fps = Number(els.syncFpsSelect.value) || 60;
+  const start = parseTimestampText(els.syncStartInput.value);
+  const end = parseTimestampText(els.syncEndInput.value);
+
+  // Unparseable (non-empty) text keeps the last valid value;
+  // flag the field so the rejection is visible.
+  els.syncStartInput.classList.toggle("input-error", start === null && els.syncStartInput.value.trim() !== "");
+  els.syncEndInput.classList.toggle("input-error", end === null && els.syncEndInput.value.trim() !== "");
+
+  sync.calculate = {
+    ...sync.calculate,
+    fps,
+    start: start ?? sync.calculate?.start ?? { minutes: 0, seconds: 0, frame: 0 },
+    end: end ?? sync.calculate?.end ?? { minutes: 0, seconds: 0, frame: 0 },
+  };
+
+  scheduleSync(0);
+  scheduleSyncEvaluate();
+}
+
+function onSyncManualField() {
+  const sync = state.layout?.sync;
+
+  if (!sync) return;
+
+  const drift = Number(els.syncDriftInput.value);
+
+  sync.manual = {
+    ...sync.manual,
+    clockDriftPercent: Number.isFinite(drift) ? drift : 0,
+  };
+
+  scheduleSync(0);
+  scheduleSyncEvaluate();
+}
+
+els.syncModeGroup.addEventListener("click", (event) => {
+  const button = event.target.closest(".sync-mode");
+
+  if (button) {
+    setSyncMode(button.dataset.mode);
+  }
+});
+
+els.syncFpsSelect.addEventListener("change", () => {
+  // A different fps re-bounds the frame field; repaint both
+  // timestamps from the stored doc after normalization.
+  onSyncCalculateField();
+});
+
+els.syncStartInput.addEventListener("change", onSyncCalculateField);
+els.syncEndInput.addEventListener("change", onSyncCalculateField);
+els.syncDriftInput.addEventListener("change", onSyncManualField);
+
+/** Drift readouts: the server derives them from the flight's
+ * real log duration. No flight → dashes, no request. */
+let syncEvalTimer = 0;
+let syncEvalJob = 0;
+
+function scheduleSyncEvaluate(delay = 150) {
+  clearTimeout(syncEvalTimer);
+
+  syncEvalTimer = setTimeout(() => {
+    const job = (syncEvalJob = syncEvalJob + 1);
+
+    if (syncMode() === "off" || !state.logPath || !state.flight) {
+      renderSyncReadouts(null);
+      return;
+    }
+
+    postJson("/api/sync/evaluate", {
+      path: state.logPath,
+      flight: state.flight,
+      layout: state.layout,
+    })
+      .then((payload) => {
+        if (job === syncEvalJob) {
+          renderSyncReadouts(payload);
+        }
+      })
+      .catch(() => {
+        if (job === syncEvalJob) {
+          renderSyncReadouts(null);
+        }
+      });
+  }, delay);
+}
+
+function renderSyncReadouts(evaluation) {
+  const mode = syncMode();
+
+  if (mode === "off") {
+    els.syncReadouts.hidden = true;
+    return;
+  }
+
+  els.syncReadouts.hidden = false;
+
+  if (!evaluation) {
+    els.syncDriftOut.textContent = "--";
+    els.syncCorr60Out.textContent = "--";
+    els.syncCorrEndOut.textContent = "--";
+    els.syncWarn.textContent = "Load a flight to compute the drift.";
+    els.syncWarn.hidden = false;
+    return;
+  }
+
+  els.syncWarn.hidden = !evaluation.error;
+
+  if (evaluation.error) {
+    els.syncWarn.textContent = evaluation.error;
+    els.syncDriftOut.textContent = "--";
+    els.syncCorr60Out.textContent = "--";
+    els.syncCorrEndOut.textContent = "--";
+    return;
+  }
+
+  els.syncDriftOut.textContent = evaluation.driftLabel;
+  els.syncCorr60Out.textContent = evaluation.correction60Label;
+  els.syncCorrEndOut.textContent = evaluation.correctionEndLabel;
+
+  els.syncWarn.textContent = evaluation.warning ?? "";
+  els.syncWarn.hidden = !evaluation.warning;
+}
 
 /* ------------------------------------------------------
  * File browser + drag/drop upload
@@ -2773,6 +3015,8 @@ function applyLayoutDoc(layout, boxes) {
   applyAccent(state.layout.theme, state.layout.themeOverrides);
   buildBackdropPicker();
   syncPreviewControls();
+  syncSyncInputs();
+  scheduleSyncEvaluate(0);
 
   refreshProperties();
   requestPreview();
@@ -3120,6 +3364,7 @@ function scheduleSyncNow() {
         state.layout = result.layout;
         state.boxes = result.boxes;
         syncLayoutInputs();
+        syncSyncInputs();
         refreshProperties();
         requestPreview();
       })
@@ -3299,6 +3544,7 @@ async function boot() {
     renderFootFacts();
     syncLayoutInputs();
     syncPreviewControls();
+    syncSyncInputs();
 
     await refreshLayoutList();
 

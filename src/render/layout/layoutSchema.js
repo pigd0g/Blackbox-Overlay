@@ -30,6 +30,7 @@ import { resolveTheme, normalizeThemeColor, mergeThemeOverrides } from "../theme
 import { resolveFont } from "../fonts.js";
 import { createOverlayTextRenderer } from "../textRenderer.js";
 import { defaultLabel, describeSource, isFlagSource, isPercentageSource } from "./valueFormat.js";
+import { defaultSyncConfig, normalizeSyncConfig } from "../syncMapping.js";
 
 export const SCHEMA_VERSION = 2;
 
@@ -63,6 +64,7 @@ export const DEFAULT_LAYOUT = () => ({
   shadow: false,
   theme: "default",
   font: "vt323",
+  sync: defaultSyncConfig(),
   themeOverrides: {},
   items: []
 });
@@ -691,6 +693,13 @@ export function normalizeLayout(rawDoc) {
 
   layout.alpha = doc.alpha === undefined ? layout.alpha : doc.alpha === true;
   layout.shadow = doc.shadow === true;
+
+  // Sync drift compensation: syncMapping.js owns the rules;
+  // missing config (older docs) silently stays mode "off".
+  layout.sync = doc.sync === undefined
+    ? layout.sync
+    : normalizeSyncConfig(doc.sync, warnings);
+
   layout.theme =
     typeof doc.theme === "string" && doc.theme ? doc.theme : layout.theme;
 

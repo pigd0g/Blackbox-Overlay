@@ -336,3 +336,122 @@ test("checkFfmpegAvailable agrees with actual PATH state", async () => {
   const available = await checkFfmpegAvailable();
   assert.equal(available, canRender);
 });
+
+// ------------------------------------------------------
+// Sync drift compensation (frame count / duration)
+// ------------------------------------------------------
+
+function withSync(layout, sync) {
+  layout.sync = sync;
+
+  return layout;
+}
+
+test("sync manual drift stretches the video span (frame math)", { skip: !RUN_RENDER_TESTS || !canRender }, async () => {
+  const directory = mkdtempSync(join(tmpdir(), "rfbvo-sync-"));
+  const outputPath = join(directory, "overlay.mp4");
+
+  try {
+    const flight = syntheticFlight(2, 10); // 20 frames @10fps log
+    const layout = withSync(testLayout(false), {
+      mode: "manual",
+      calculate: {
+        fps: 60,
+        start: { minutes: 0, seconds: 0, frame: 0 },
+        end: { minutes: 0, seconds: 0, frame: 0 },
+        disarmGracePeriod: 0
+      },
+      manual: { clockDriftPercent: 10 } // ×1.1 → 22 frames @10fps
+    });
+
+    const result = await renderLayoutVideo(flight, outputPath, {
+      fps: 10,
+      layout,
+      format: "h264-yuv420p",
+      preview: false
+    });
+
+    assert.equal(result.frames, 22);
+    assert.ok(Math.abs(result.durationSeconds - 2.2) < 1e-9);
+    assert.ok(Math.abs(result.clockScale - 1.1) < 1e-9);
+    assert.ok(Math.abs(result.blackboxDurationSeconds - 2) < 1e-6);
+    assert.ok(existsSync(outputPath));
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("sync calculate mode scales by the ARM-flag span", { skip: !RUN_RENDER_TESTS || !canRender }, async () => {
+  const directory = mkdtempSync(join(tmpdir(), "rfbvo-synccalc-"));
+  const outputPath = join(directory, "overlay.mp4");
+
+  try {
+    // 2s log at 10 Hz, ARM set at row 5 (t=0.5s), cleared at
+    // row 15 (t=1.5s) → ARM span 1.0s. Footage span 1.1s
+    // (at 10 fps "footage" fps) → scale 1.1 → video 2.2s.
+    const flight = syntheticFlight(2, 10);
+    flight.slowFieldNames = ["flightModeFlags"];
+    flight.slowFrames = [
+      { afterMainFrame: 0, values: [0] },
+      { afterMainFrame: 5, values: [1] },
+      { afterMainFrame: 15, values: [0] }
+    ];
+
+    const layout = withSync(testLayout(false), {
+      mode: "calculate",
+      calculate: {
+        fps: 10,
+        start: { minutes: 0, seconds: 0, frame: 0 },
+        end: { minutes: 0, seconds: 1, frame: 1 },
+        disarmGracePeriod: 3 // legacy field: must be ignored
+      },
+      manual: { clockDriftPercent: 0 }
+    });
+
+    const result = await renderLayoutVideo(flight, outputPath, {
+      fps: 10,
+      layout,
+      format: "h264-yuv420p",
+      preview: false
+    });
+
+    assert.ok(Math.abs(result.clockScale - 1.1) < 1e-9);
+    assert.ok(Math.abs(result.blackboxDurationSeconds - 1) < 1e-6);
+    assert.equal(result.frames, 22);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("sync invalid config falls back to identity scale", { skip: !RUN_RENDER_TESTS || !canRender }, async () => {
+  const directory = mkdtempSync(join(tmpdir(), "rfbvo-syncbad-"));
+  const outputPath = join(directory, "overlay.mp4");
+
+  try {
+    const flight = syntheticFlight(1, 10);
+    const layout = withSync(testLayout(false), {
+      mode: "manual",
+      calculate: {
+        fps: 60,
+        start: { minutes: 0, seconds: 0, frame: 0 },
+        end: { minutes: 0, seconds: 0, frame: 0 },
+        disarmGracePeriod: 0
+      },
+      manual: { clockDriftPercent: -100 } // scale 0 → invalid
+    });
+
+    const result = await renderLayoutVideo(flight, outputPath, {
+      fps: 10,
+      layout,
+      format: "h264-yuv420p",
+      preview: false
+    });
+
+    // computeSync resolved the invalid config to identity: the
+    // frame count matches the uncompensated render.
+    assert.equal(result.frames, 10);
+    assert.equal(result.clockScale, 1);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

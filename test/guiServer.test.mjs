@@ -235,6 +235,176 @@ test("layout normalize validates, clamps, and measures", async () => {
   assert.ok(payload.warnings.length > 0, "warnings reported");
 });
 
+test("sync/evaluate derives drift readouts for a flight", async () => {
+  if (!hasFixture) return;
+
+  const layout = testLayout();
+
+  layout.sync = {
+    mode: "manual",
+    calculate: {
+      fps: 60,
+      start: { minutes: 0, seconds: 0, frame: 0 },
+      end: { minutes: 0, seconds: 0, frame: 0 },
+      disarmGracePeriod: 0
+    },
+    manual: { clockDriftPercent: 1.31 }
+  };
+
+  const response = await fetch(`${base}/api/sync/evaluate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: FIXTURE, flight: 1, layout })
+  });
+
+  assert.equal(response.status, 200);
+
+  const payload = await response.json();
+
+  assert.equal(payload.mode, "manual");
+  assert.equal(payload.active, true);
+  assert.equal(payload.driftLabel, "+1.31%");
+  assert.equal(payload.correction60Label, "+0.79s");
+  assert.ok(payload.clockScale > 1.013 && payload.clockScale < 1.0132);
+  assert.ok(payload.videoDurationSeconds > payload.blackboxDurationSeconds);
+  assert.equal(payload.error, null);
+
+  // Off mode: identity, no readout error.
+  const offLayout = testLayout();
+
+  offLayout.sync = { mode: "off", manual: { clockDriftPercent: 9 } };
+
+  const offResponse = await fetch(`${base}/api/sync/evaluate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: FIXTURE, flight: 1, layout: offLayout })
+  });
+
+  const offPayload = await offResponse.json();
+
+  assert.equal(offPayload.active, false);
+  assert.equal(offPayload.clockScale, 1);
+});
+
+test("sync/evaluate calculate mode scales footage span by the ARM span", async () => {
+  if (!hasFixture) return;
+
+  const layout = testLayout();
+
+  layout.sync = {
+    mode: "calculate",
+    calculate: {
+      fps: 60,
+      start: { minutes: 0, seconds: 0, frame: 0 },
+      end: { minutes: 5, seconds: 26, frame: 10 },
+      disarmGracePeriod: 5
+    },
+    manual: { clockDriftPercent: 0 }
+  };
+
+  const evaluate = (syncLayout) =>
+    fetch(`${base}/api/sync/evaluate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: FIXTURE, flight: 1, layout: syncLayout })
+    }).then((response) => {
+      assert.equal(response.status, 200);
+      return response.json();
+    });
+
+  // First pass: read the detected ARM span out of the payload.
+  const first = await evaluate(layout);
+
+  assert.equal(first.mode, "calculate");
+  assert.equal(first.armSpanUsed, true);
+  assert.equal(first.error, null);
+  assert.ok(first.blackboxDurationSeconds > 0, "fixture must expose an ARM span");
+  assert.ok(first.blackboxDurationSeconds < first.videoDurationSeconds / first.clockScale + 1e-9);
+
+  // Second pass: feed the ARM span back as an identical
+  // footage span → scale must be the quantization ratio
+  // (mm:ss:frame can only express 1/60s steps), proving the
+  // grace value in the config is ignored.
+  const span = first.blackboxDurationSeconds;
+  const minutes = Math.floor(span / 60);
+  const seconds = Math.floor(span - minutes * 60);
+  const frames = Math.round((span - minutes * 60 - seconds) * 60);
+
+  layout.sync.calculate.end = { minutes, seconds, frame: frames };
+  layout.sync.calculate.start = { minutes: 0, seconds: 0, frame: 0 };
+
+  const quantizedSpan = minutes * 60 + seconds + frames / 60;
+  const second = await evaluate(layout);
+
+  assert.ok(
+    Math.abs(second.clockScale - quantizedSpan / span) < 1e-9,
+    `scale ${second.clockScale} must equal ${quantizedSpan}/${span}`
+  );
+  assert.ok(second.externalDurationSeconds > 0);
+});
+
+test("sync/evaluate rejects missing path and unknown flights", async () => {
+  if (!hasFixture) return;
+
+  const noPath = await fetch(`${base}/api/sync/evaluate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ flight: 1, layout: testLayout() })
+  });
+
+  assert.equal(noPath.status, 400);
+
+  const badFlight = await fetch(`${base}/api/sync/evaluate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: FIXTURE, flight: 999, layout: testLayout() })
+  });
+
+  assert.equal(badFlight.status, 400);
+
+  const payload = await badFlight.json();
+
+  assert.match(payload.error, /Flight 999 not found/);
+});
+
+test("preview ignores sync drift compensation (blackbox time only)", async () => {
+  if (!hasFixture) return;
+
+  // The editor preview must sample the log in plain blackbox
+  // time regardless of the sync config — only the final
+  // render applies drift (videoRender.js).
+  const probe = async (sync) => {
+    const layout = testLayout();
+
+    layout.sync = sync;
+
+    const response = await fetch(`${base}/api/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ layout, file: FIXTURE, flight: 1, t: 1.5 })
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("X-Video-Duration-Seconds"), null);
+
+    return Buffer.from(await response.arrayBuffer());
+  };
+
+  const off = await probe(undefined);
+  const manual = await probe({
+    mode: "manual",
+    calculate: {
+      fps: 60,
+      start: { minutes: 0, seconds: 0, frame: 0 },
+      end: { minutes: 0, seconds: 0, frame: 0 },
+      disarmGracePeriod: 0
+    },
+    manual: { clockDriftPercent: 10 }
+  });
+
+  assert.deepEqual(manual, off, "sync config must not change preview frames");
+});
+
 test("preview returns a RGBA frame with layout + payload dimensions", async () => {
   if (!hasFixture) return;
 

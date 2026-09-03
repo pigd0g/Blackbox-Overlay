@@ -15,7 +15,9 @@ import {
   normalizeFps,
   FPS_DEFAULT,
   resolveOutputPath,
-  suggestOutputPath
+  suggestOutputPath,
+  evaluateSync,
+  renderPreviewFrame
 } from "../src/gui/api.js";
 
 const OUT_DIR = resolve(process.cwd(), "out");
@@ -150,4 +152,49 @@ test("suggestOutputPath picks the extension per format", () => {
     suggestOutputPath("a.bbl", 1, true),
     /overlay\.webm$/
   );
+});
+
+// ------------------------------------------------------
+// Sync drift: evaluateSync + preview mapping surface
+// ------------------------------------------------------
+
+test("evaluateSync throws for a missing log file", async () => {
+  await assert.throws(
+    () => evaluateSync({ filePath: "Z:/definitely/not/here.bbl", flight: 1, layout: null }),
+    (error) => /ENOENT|no such file|not a binary/i.test(error.message)
+  );
+});
+
+test("renderPreviewFrame works with a sync-active layout and no flight", () => {
+  // Placeholder state (no flight): the preview ignores sync
+  // entirely and must not crash on a sync-active layout.
+  const layout = {
+    version: 2,
+    canvas: { width: 320, height: 180 },
+    grid: { cols: 4, rows: 2 },
+    alpha: true,
+    theme: "default",
+    font: "vt323",
+    sync: {
+      mode: "manual",
+      calculate: {
+        fps: 60,
+        start: { minutes: 0, seconds: 0, frame: 0 },
+        end: { minutes: 0, seconds: 0, frame: 0 },
+        disarmGracePeriod: 0
+      },
+      manual: { clockDriftPercent: 1.31 }
+    },
+    themeOverrides: {},
+    items: [
+      { id: "t-a", type: "text", col: 0, row: 0,
+        props: { source: "custom", customText: "SYNC" } }
+    ]
+  };
+
+  const frame = renderPreviewFrame({ layout, t: 5 });
+
+  assert.equal(frame.width, 320);
+  assert.equal(frame.height, 180);
+  assert.equal(frame.pixels.length, 320 * 180 * 4);
 });

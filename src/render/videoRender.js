@@ -27,6 +27,7 @@ import {
 } from "./videoWriter.js";
 import { outputFormatOrThrow, DEFAULT_OUTPUT_FORMAT as DEFAULT_ALPHA_FORMAT } from "./outputFormats.js";
 import { createFlightSampler } from "./frameSampler.js";
+import { computeSync, blackboxTimeForVideoTime } from "./syncMapping.js";
 import { createFieldStats } from "./layout/fieldStats.js";
 import { buildSceneState } from "./layout/sceneState.js";
 import { paintScene } from "./layout/scenePainter.js";
@@ -85,7 +86,10 @@ export function previewPathFor(outputPath) {
  * @param {boolean} [options.preview] alpha renders also transcode
  *                  a browser-playable .preview.mp4 (default true)
  * @param {(msg: string) => void} [options.onProgress]
- * @returns {Promise<{frames: number, fps: number, durationSeconds: number}>}
+ * @returns {Promise<{frames: number, fps: number, durationSeconds: number,
+ *                    blackboxDurationSeconds: number, clockScale: number}>}
+ *   durationSeconds is the VIDEO span (log span × clockScale);
+ *   with sync off it equals the log span.
  */
 export async function renderLayoutVideo(flight, outputPath, options = {}) {
   const layout = options.layout;
@@ -142,7 +146,29 @@ export async function renderLayoutVideo(flight, outputPath, options = {}) {
     throw new Error("Flight duration is zero — nothing to render.");
   }
 
-  const frameCount = Math.ceil(durationSeconds * fps);
+  // Sync drift compensation: the render paces VIDEO frames,
+  // but samples the log in BLACKBOX time. Calculate mode
+  // derives the clock scale from the detected ARM→DISARM span
+  // (flightModeFlags bit 0) versus the user's footage
+  // timestamps; the render itself covers the FULL log × scale.
+  // Off (or an invalid config) resolves to scale 1 — the
+  // legacy mapping, bit-identical.
+  const sync = computeSync(layout.sync, {
+    logDurationSeconds: durationSeconds,
+    flightSpanSeconds: sampler?.flightSpanSeconds ?? null
+  });
+
+  if (sync.error) {
+    // Invalid configs never break a render: identity scale.
+    options.onProgress?.(`sync drift: ${sync.error} Rendering uncompensated.`);
+  } else if (sampler && sampler.armCycles > 1) {
+    options.onProgress?.(
+      `sync drift: log contains ${sampler.armCycles} arm/disarm cycles — using the first.`
+    );
+  }
+
+  const videoDurationSeconds = sync.videoDurationSeconds;
+  const frameCount = Math.ceil(videoDurationSeconds * fps);
   const outputDirectory = dirname(outputPath);
 
   if (outputDirectory && outputDirectory !== ".") {
@@ -156,7 +182,9 @@ export async function renderLayoutVideo(flight, outputPath, options = {}) {
 
   try {
     for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
-      const tSeconds = frameIndex / fps;
+      const tVideo = frameIndex / fps;
+      // video time → blackbox time (identity when sync is off).
+      const tSeconds = blackboxTimeForVideoTime(tVideo, sync.clockScale);
       const sceneState = sampler
         ? buildSceneState({ flight, sampler, t: tSeconds, stats })
         : buildSceneState({ t: tSeconds });
@@ -203,7 +231,9 @@ export async function renderLayoutVideo(flight, outputPath, options = {}) {
   return {
     frames: frameCount,
     fps,
-    durationSeconds,
+    durationSeconds: videoDurationSeconds,
+    blackboxDurationSeconds: sync.blackboxDurationSeconds,
+    clockScale: sync.clockScale,
     ...(alpha && wantPreview
       ? { previewPath: previewPathFor(outputPath) }
       : {})

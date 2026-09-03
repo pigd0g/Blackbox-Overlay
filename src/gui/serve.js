@@ -15,6 +15,7 @@
 //   GET  /api/browse?dir=              fs browser
 //   POST /api/log                      describe a log
 //   POST /api/layout/normalize         validate + measure
+//   POST /api/sync/evaluate            drift readouts for a flight
 //   POST /api/preview                  frame for a layout
 //   GET  /api/layouts                  preset + user layout list
 //   GET  /api/layouts/:id              one layout doc
@@ -39,6 +40,7 @@ import {
   stateCatalog,
   normalizeLayoutDoc,
   renderPreviewFrame,
+  evaluateSync,
   startRenderJob,
   jobStatus,
   currentJob,
@@ -285,6 +287,24 @@ async function handleApi(req, res, url) {
 
     try {
       return sendJson(res, 200, normalizeLayoutDoc(body.layout ?? body));
+    } catch (error) {
+      return sendError(res, 400, error.message);
+    }
+  }
+
+  if (req.method === "POST" && pathname === "/api/sync/evaluate") {
+    const body = await readBody(req);
+
+    if (!body.path && !body.file) {
+      return sendError(res, 400, "path and flight are required.");
+    }
+
+    try {
+      return sendJson(res, 200, evaluateSync({
+        file: body.path ?? body.file,
+        flight: body.flight,
+        layout: body.layout
+      }));
     } catch (error) {
       return sendError(res, 400, error.message);
     }

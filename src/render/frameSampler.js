@@ -23,6 +23,7 @@ import {
 import { readTelemetry, detectCells, CURRENT_SCALE } from "./telemetry.js";
 
 const DEFAULT_LOOP_INTERVAL_US = 20_000;
+const ARM_FLAG_BIT = 1;
 
 /**
  * Build a reusable sampler for one decoded flight.
@@ -90,6 +91,73 @@ function buildFlightSampler(flight) {
   const durationSeconds = (lastTimeUs + typicalIntervalUs) / 1_000_000;
 
   const slowFrames = flight.slowFrames ?? [];
+
+  // ------------------------------------------------------
+  // ARM span detection (the flight timeline for sync drift)
+  //
+  // The ARM flag (flightModeFlags bit 0, carried forward via
+  // slow frames) is the only flight-boundary evidence this
+  // project trusts: motor/throttle say nothing about log
+  // start/stop (motors idle-spin pre-arm, logging continues
+  // post-disarm). One forward pass finds the first ARM-on
+  // and the first ARM-off after it, in relative log seconds —
+  // the same two points the user marks in their footage (arm
+  // → disarm switch moments), so Calculate mode divides
+  // footage(arm→disarm) by log(arm→disarm).
+  //
+  //   t_arm    — first main row where ARM is set (0 when the
+  //              log starts armed)
+  //   t_disarm — first ARM clear after t_arm; null when the
+  //              log ends still armed (error case for sync)
+  //   armCycles — count of ARM off-transitions (warning when
+  //              the log contains more than one arm/disarm
+  //              cycle)
+  // ------------------------------------------------------
+  const flagsIndex = binding.slowColumnIndexes.flightModeFlags;
+  let tArm = null;
+  let tDisarm = null;
+  let armCycles = 0;
+
+  if (flagsIndex >= 0 && slowFrames.length > 0) {
+    let slowCursor = 0;
+    let armed = false;
+    let prevArmed = false;
+    let armedEverSeen = false;
+
+    for (let row = 0; row < flight.mainFrames.length; row += 1) {
+      while (
+        slowCursor < slowFrames.length &&
+        slowFrames[slowCursor].afterMainFrame <= row
+      ) {
+        armed =
+          ((Number(slowFrames[slowCursor].values[flagsIndex]) || 0) & ARM_FLAG_BIT) ===
+          ARM_FLAG_BIT;
+        armedEverSeen = true;
+        slowCursor += 1;
+      }
+
+      if (!armedEverSeen) {
+        continue; // rows before the first slow frame
+      }
+
+      // Edge-triggered: count state TRANSITIONS, not rows, so
+      // multi-cycle logs report every off-transition while the
+      // span timestamps keep the FIRST cycle only.
+      if (armed && !prevArmed) {
+        if (tArm === null) {
+          tArm = relativeTimeUs[row] / 1_000_000;
+        }
+      } else if (!armed && prevArmed && tArm !== null) {
+        if (tDisarm === null) {
+          tDisarm = relativeTimeUs[row] / 1_000_000;
+        }
+
+        armCycles += 1;
+      }
+
+      prevArmed = armed;
+    }
+  }
 
   // ------------------------------------------------------
   // Cell-count lock
@@ -230,6 +298,31 @@ function buildFlightSampler(flight) {
   return {
     durationSeconds,
     samplingIntervalUs: typicalIntervalUs,
+
+    /** ARM-flag span for sync drift (tests/debug + sync):
+     * null when the log carries no usable ARM transition. */
+    get flightSpanSeconds() {
+      if (tArm === null || tDisarm === null || !(tDisarm > tArm)) {
+        return null;
+      }
+
+      return tDisarm - tArm;
+    },
+
+    /** Relative log seconds of first ARM-on (null when never armed). */
+    get armTimeSeconds() {
+      return tArm;
+    },
+
+    /** Relative log seconds of first ARM-off after arm. */
+    get disarmTimeSeconds() {
+      return tDisarm;
+    },
+
+    /** ARM off-transition count (>1 = multi-cycle log). */
+    get armCycles() {
+      return armCycles;
+    },
 
     /** Latched cell count for this flight (tests/debug). */
     get lockedCells() {

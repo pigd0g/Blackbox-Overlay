@@ -198,6 +198,55 @@
           <input class="fld" id="output-input" type="text" spellcheck="false" aria-describedby="out-hint">
         </div>
         <p class="out-hint" id="out-hint">Renders land in <code>out/</code> — only the file name is used.</p>
+
+        <!-- Sync drift compensation: blackbox↔footage clock-rate
+             correction. Lives with the render settings; the
+             config rides the layout doc. -->
+        <div class="sync-divider" role="separator"></div>
+        <h3 class="group-title">SYNC DRIFT</h3>
+        <div class="sync-modes" id="sync-mode-group" role="radiogroup" aria-label="Sync drift compensation mode">
+          <button type="button" class="sync-mode" data-mode="off" role="radio" aria-checked="true">Off</button>
+          <button type="button" class="sync-mode" data-mode="calculate" role="radio" aria-checked="false">Calculate</button>
+          <button type="button" class="sync-mode" data-mode="manual" role="radio" aria-checked="false">Manual</button>
+        </div>
+
+        <div id="sync-calculate" hidden>
+          <p class="sync-sub">External footage settings</p>
+          <div class="out-row">
+            <label class="lbl" for="sync-fps-select">FPS</label>
+            <select class="fld" id="sync-fps-select" aria-describedby="sync-calc-hint">
+              <option value="30">30</option>
+              <option value="60" selected>60</option>
+              <option value="120">120</option>
+            </select>
+          </div>
+          <div class="out-row">
+            <label class="lbl" for="sync-start-input">Start</label>
+            <input class="fld fld-time" id="sync-start-input" type="text" inputmode="numeric" spellcheck="false"
+                   placeholder="00:12:18" aria-describedby="sync-calc-hint">
+          </div>
+          <div class="out-row">
+            <label class="lbl" for="sync-end-input">End</label>
+            <input class="fld fld-time" id="sync-end-input" type="text" inputmode="numeric" spellcheck="false"
+                   placeholder="01:48:42" aria-describedby="sync-calc-hint">
+          </div>
+          <p class="out-hint" id="sync-calc-hint">Arm/disarm switch moments in the footage, mm:ss:frame — the log's ARM-flag span supplies the blackbox side</p>
+        </div>
+
+        <div id="sync-manual" hidden>
+          <div class="out-row">
+            <label class="lbl" for="sync-drift-input">Drift&nbsp;%</label>
+            <input class="fld fld-num" id="sync-drift-input" type="number" step="0.01" value="0" inputmode="decimal">
+          </div>
+          <p class="out-hint">+ means the footage runs long vs the log (2&nbsp;dp)</p>
+        </div>
+
+        <div class="sync-readouts" id="sync-readouts" hidden>
+          <p class="out-hint" id="sync-warn" hidden></p>
+          <div class="out-row sync-read"><span class="lbl">DRIFT</span><output class="t-value" id="sync-drift-out">+0.00%</output></div>
+          <div class="out-row sync-read"><span class="lbl">@60S</span><output class="t-value" id="sync-corr60-out">+0.00s</output></div>
+          <div class="out-row sync-read"><span class="lbl">@END</span><output class="t-value" id="sync-corrend-out">+0.00s</output></div>
+        </div>
       </section>
     </section>
 

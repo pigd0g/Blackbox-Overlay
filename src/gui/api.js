@@ -38,6 +38,7 @@ import { fileURLToPath } from "node:url";
 import { decodeBblFile, looksLikeBinaryBbl } from "../bbl/bblDecoder.js";
 import { summarizeFlight } from "../summarize.js";
 import { createFlightSampler } from "../render/frameSampler.js";
+import { computeSync } from "../render/syncMapping.js";
 import { createFieldStats } from "../render/layout/fieldStats.js";
 import { normalizeLayout, firstFreeCell } from "../render/layout/layoutSchema.js";
 import { buildSceneState } from "../render/layout/sceneState.js";
@@ -528,6 +529,45 @@ export function stateCatalog() {
 }
 
 // ------------------------------------------------------
+// Sync drift evaluation
+// ------------------------------------------------------
+
+/**
+ * Resolve the layout's sync config against the selected
+ * flight's timing: the readouts (drift %, corrections) come
+ * from the server so the browser never duplicates the math.
+ * Calculate mode uses the flight's detected ARM→DISARM span
+ * (flightModeFlags bit 0 via the sampler). Returns null when
+ * no flight is selected.
+ */
+export function evaluateSync({ file, filePath, flight, layout: rawLayout }) {
+  const sourceFile = file ?? filePath;
+  const log = loadLog(sourceFile);
+  const flightObj = findFlight(log, flight);
+
+  if (!flightObj) {
+    throw new Error(`Flight ${flight} not found in this log.`);
+  }
+
+  const { layout } = normalizeLayout(rawLayout);
+  const sampler = hasRc(flightObj) ? createFlightSampler(flightObj) : null;
+  const durationSeconds = sampler
+    ? sampler.durationSeconds
+    : (flightObj.durationSeconds ?? 0);
+
+  const evaluation = computeSync(layout.sync, {
+    logDurationSeconds: durationSeconds,
+    flightSpanSeconds: sampler?.flightSpanSeconds ?? null
+  });
+
+  if (sampler && sampler.armCycles > 1) {
+    evaluation.warning = `Log contains ${sampler.armCycles} arm/disarm cycles — the first is used.`;
+  }
+
+  return evaluation;
+}
+
+// ------------------------------------------------------
 // Preview
 // ------------------------------------------------------
 
@@ -537,6 +577,10 @@ export function stateCatalog() {
  * preview cap (≤960px wide stays 1:1). `maxWidth` lowers
  * the cap for card thumbnails (clamped 64–PREVIEW_MAX_W).
  * Works with no flight — placeholder state.
+ *
+ * Sync drift compensation is intentionally NOT applied here:
+ * the editor preview works in plain blackbox time; only the
+ * final render maps blackbox→video time (videoRender.js).
  *
  * Returns { width, height, layoutWidth, layoutHeight, pixels }.
  */

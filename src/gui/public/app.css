@@ -507,6 +507,69 @@ html, body {
   margin-top: 4px;
 }
 
+/* ------------------------------------------------------
+   Sync drift compensation (output pane section)
+   ------------------------------------------------------ */
+.sync-divider {
+  border-top: 1px dashed var(--rule);
+  margin: 10px 0 6px;
+}
+
+.sync-modes {
+  display: flex;
+  gap: 4px;
+  margin: 6px 0;
+}
+
+.sync-mode {
+  flex: 1;
+  border: 1px solid var(--rule);
+  background: #fff;
+  border-radius: 7px;
+  padding: 5px 4px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.sync-mode[aria-checked="true"] {
+  border-color: var(--dot);
+  box-shadow: 0 0 0 2px var(--dot-soft);
+  color: var(--ink);
+}
+
+.sync-sub {
+  margin: 8px 0 2px;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+}
+
+.fld-time {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.fld.input-error {
+  border-color: #c4381f;
+  box-shadow: 0 0 0 2px rgba(196, 56, 31, 0.2);
+}
+
+.sync-readouts {
+  border-top: 1px solid var(--rule-soft);
+  margin-top: 8px;
+  padding-top: 4px;
+}
+
+.sync-read .t-value {
+  font-size: 13px;
+}
+
+.sync-read .lbl {
+  min-width: 48px;
+}
+
 .theme-card, .font-card {
   border: 1px solid var(--rule);
   border-radius: 8px;

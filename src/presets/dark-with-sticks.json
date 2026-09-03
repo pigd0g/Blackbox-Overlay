@@ -1,0 +1,363 @@
+{
+  "version": 2,
+  "canvas": {
+    "width": 900,
+    "height": 300
+  },
+  "grid": {
+    "cols": 30,
+    "rows": 15
+  },
+  "alpha": true,
+  "shadow": false,
+  "theme": "light",
+  "font": "zendots",
+  "sync": {
+    "mode": "manual",
+    "calculate": {
+      "fps": 60,
+      "start": {
+        "minutes": 0,
+        "seconds": 3,
+        "frame": 52
+      },
+      "end": {
+        "minutes": 5,
+        "seconds": 10,
+        "frame": 0
+      },
+      "disarmGracePeriod": 0
+    },
+    "manual": {
+      "clockDriftPercent": -0.1
+    }
+  },
+  "themeOverrides": {},
+  "items": [
+    {
+      "id": "ibddbs2y",
+      "type": "text",
+      "col": 1,
+      "row": 7,
+      "props": {
+        "source": "derived:packVolts",
+        "customText": "Custom text",
+        "showLabel": true,
+        "alignment": "stacked",
+        "labelSize": 10,
+        "labelColor": {
+          "hex": "#636e7f",
+          "alpha": 100
+        },
+        "valueSize": null,
+        "valueColor": {
+          "hex": "#ffffff",
+          "alpha": 100
+        },
+        "cardColor": {
+          "hex": "#1c222e",
+          "alpha": 100
+        },
+        "cardMinWidth": 140,
+        "accentColor": {
+          "hex": "#1abb9b",
+          "alpha": 100
+        }
+      }
+    },
+    {
+      "id": "iumvncfu",
+      "type": "text",
+      "col": 1,
+      "row": 4,
+      "props": {
+        "source": "derived:perCell",
+        "customText": "Custom text",
+        "showLabel": true,
+        "alignment": "stacked",
+        "labelSize": 10,
+        "labelColor": {
+          "hex": "#636e7f",
+          "alpha": 100
+        },
+        "valueSize": null,
+        "valueColor": {
+          "hex": "#ffffff",
+          "alpha": 100
+        },
+        "cardColor": {
+          "hex": "#1c222e",
+          "alpha": 100
+        },
+        "cardMinWidth": 140,
+        "accentColor": {
+          "hex": "#a368da",
+          "alpha": 100
+        }
+      }
+    },
+    {
+      "id": "id9ht6sc",
+      "type": "text",
+      "col": 1,
+      "row": 1,
+      "props": {
+        "source": "derived:rpm",
+        "customText": "Custom text",
+        "showLabel": true,
+        "alignment": "stacked",
+        "labelSize": 10,
+        "labelColor": {
+          "hex": "#636e7f",
+          "alpha": 100
+        },
+        "valueSize": null,
+        "valueColor": {
+          "hex": "#ffffff",
+          "alpha": 100
+        },
+        "cardColor": {
+          "hex": "#1c222e",
+          "alpha": 100
+        },
+        "cardMinWidth": 140,
+        "accentColor": {
+          "hex": "#f0c30f",
+          "alpha": 100
+        }
+      }
+    },
+    {
+      "id": "ikmhg7p4",
+      "type": "text",
+      "col": 24,
+      "row": 1,
+      "props": {
+        "source": "derived:current",
+        "customText": "Custom text",
+        "showLabel": true,
+        "alignment": "stacked",
+        "labelSize": 10,
+        "labelColor": {
+          "hex": "#636e7f",
+          "alpha": 100
+        },
+        "valueSize": null,
+        "valueColor": {
+          "hex": "#ffffff",
+          "alpha": 100
+        },
+        "cardColor": {
+          "hex": "#1c222e",
+          "alpha": 100
+        },
+        "cardMinWidth": 140,
+        "accentColor": {
+          "hex": "#3497db",
+          "alpha": 100
+        }
+      }
+    },
+    {
+      "id": "iz0d6iwr",
+      "type": "text",
+      "col": 24,
+      "row": 7,
+      "props": {
+        "source": "derived:escTemp",
+        "customText": "Custom text",
+        "showLabel": true,
+        "alignment": "stacked",
+        "labelSize": 10,
+        "labelColor": {
+          "hex": "#636e7f",
+          "alpha": 100
+        },
+        "valueSize": null,
+        "valueColor": {
+          "hex": "#ffffff",
+          "alpha": 100
+        },
+        "cardColor": {
+          "hex": "#1c222e",
+          "alpha": 100
+        },
+        "cardMinWidth": 140,
+        "accentColor": {
+          "hex": "#2ecc70",
+          "alpha": 100
+        }
+      }
+    },
+    {
+      "id": "i86np4d4",
+      "type": "text",
+      "col": 24,
+      "row": 4,
+      "props": {
+        "source": "derived:maxCurrent",
+        "customText": "Custom text",
+        "showLabel": true,
+        "alignment": "stacked",
+        "labelSize": 10,
+        "labelColor": {
+          "hex": "#636e7f",
+          "alpha": 100
+        },
+        "valueSize": null,
+        "valueColor": {
+          "hex": "#ffffff",
+          "alpha": 100
+        },
+        "cardColor": {
+          "hex": "#1c222e",
+          "alpha": 100
+        },
+        "cardMinWidth": 140,
+        "accentColor": {
+          "hex": "#ffb000",
+          "alpha": 100
+        }
+      }
+    },
+    {
+      "id": "ieuwyry9",
+      "type": "stick",
+      "col": 10,
+      "row": 1,
+      "props": {
+        "size": "small",
+        "xChannel": 2,
+        "yChannel": 3,
+        "showCaption": false,
+        "boxColor": null,
+        "crosshairColor": null,
+        "dotColor": {
+          "hex": "#a368da",
+          "alpha": 100
+        }
+      }
+    },
+    {
+      "id": "ilzu0ubd",
+      "type": "stick",
+      "col": 16,
+      "row": 1,
+      "props": {
+        "size": "small",
+        "xChannel": 0,
+        "yChannel": 1,
+        "showCaption": false,
+        "boxColor": null,
+        "crosshairColor": null,
+        "dotColor": {
+          "hex": "#2ecc70",
+          "alpha": 100
+        }
+      }
+    },
+    {
+      "id": "ij1g9334",
+      "type": "bar",
+      "col": 10,
+      "row": 9,
+      "props": {
+        "source": "derived:motorPct",
+        "orientation": "horizontal",
+        "width": 300,
+        "height": 13,
+        "maxValue": {
+          "mode": "percent"
+        },
+        "showLabel": false,
+        "labelOverride": "MOTOR",
+        "labelSize": null,
+        "labelColor": {
+          "hex": "#ffffff",
+          "alpha": 100
+        },
+        "trackColor": {
+          "hex": "#1c222e",
+          "alpha": 100
+        },
+        "fillColor": null,
+        "cardColor": {
+          "hex": "#1c222e",
+          "alpha": 100
+        },
+        "cardMinWidth": 0,
+        "accentColor": {
+          "hex": "#1c222e",
+          "alpha": 100
+        }
+      }
+    },
+    {
+      "id": "ivz2ht4l",
+      "type": "text",
+      "col": 6,
+      "row": 8,
+      "props": {
+        "source": "derived:armed",
+        "customText": "Custom text",
+        "showLabel": false,
+        "alignment": "inline",
+        "labelSize": null,
+        "labelColor": null,
+        "valueSize": 8,
+        "valueColor": {
+          "hex": "#3497db",
+          "alpha": 100
+        },
+        "cardColor": {
+          "hex": "#1c222e",
+          "alpha": 100
+        },
+        "cardMinWidth": 80,
+        "accentColor": {
+          "hex": "#3497db",
+          "alpha": 100
+        }
+      }
+    },
+    {
+      "id": "i6rttake",
+      "type": "bar",
+      "col": 10,
+      "row": 8,
+      "props": {
+        "source": "derived:current",
+        "orientation": "horizontal",
+        "width": 300,
+        "height": 13,
+        "maxValue": {
+          "mode": "dynamic"
+        },
+        "showLabel": false,
+        "labelOverride": "MOTOR",
+        "labelSize": null,
+        "labelColor": {
+          "hex": "#ffffff",
+          "alpha": 100
+        },
+        "trackColor": {
+          "hex": "#1c222e",
+          "alpha": 100
+        },
+        "fillColor": {
+          "hex": "#ffb000",
+          "alpha": 100
+        },
+        "cardColor": {
+          "hex": "#1c222e",
+          "alpha": 100
+        },
+        "cardMinWidth": 0,
+        "accentColor": {
+          "hex": "#1c222e",
+          "alpha": 100
+        }
+      }
+    }
+  ]
+}

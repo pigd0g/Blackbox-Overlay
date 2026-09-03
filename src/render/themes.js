@@ -1,76 +1,62 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — COLOR THEMES
+// RotorFlight-Blackbox-Video-Overlay — COLOR THEMES (v2)
 // ======================================================
 //
-// One object per theme with the 16 interface colors, in
-// paint order:
+// v2 themes are STRUCTURAL DEFAULTS for the layout engine,
+// not a palette of widget-specific keys. Every widget colour
+// property resolves: item value → theme slot → fallback.
 //
-//   background   frame backdrop (fully transparent when
-//               alpha rendering is on)
-//   box          gimbal square fill
-//   crosshair    axis lines inside the gimbal
-//   dot          stick-position dot
-//   labelOff     dim text (flags off, column labels)
-//   rpm          RPM readout text
-//   armed        ARMED flag text (the on state)
-//   motor        motor on/off flag text
-//   vCell        volts-per-cell column text
-//   current      live current text
-//   maxCurrent   max current text
-//   escTemp      ESC temperature text
-//   barMotor     motor-% vertical bar fill
-//   barCurrent   current-vs-max vertical bar fill
-//   barTrack     vertical bar track behind both fills
-//   textShadow   drop-shadow color drawn under every glyph
-//               (+scale px diagonally) so text stays
-//               readable over busy footage
+// Theme structure (one per named theme):
 //
-// Every value is an [r, g, b] triplet.
+//   background   opaque-render backdrop (alpha mode leaves
+//               the canvas transparent instead)
+//   textShadow   drop-shadow colour under glyphs
+//   fonts.label  { size, color } label typography defaults
+//   fonts.value  { size, color } value typography defaults
+//   card.accent  left accent stripe default (null = none)
+//   stick.box    gimbal square fill
+//   stick.crosshair  axis lines inside the gimbal
+//   stick.dot    stick-position dot
+//   bar.track    progress-bar track
+//   bar.fill     progress-bar fill
+//   donut.track  donut track ring
+//   donut.fill   donut value arc
+//
+// A colour slot is "#rrggbb"/"#rgb" (alpha 100) or
+// { hex, alpha } (alpha 0–100). `null` card.color means no
+// card is painted by default.
 //
 // ======================================================
 
 function hex(color) {
-  return [
-    parseInt(color.slice(1, 3), 16),
-    parseInt(color.slice(3, 5), 16),
-    parseInt(color.slice(5, 7), 16),
-  ];
+  return {
+    hex: `#${color.replace("#", "").padStart(6, "0").toLowerCase()}`,
+    alpha: 100,
+  };
 }
 
 function theme(values) {
-  return Object.fromEntries(
-    Object.entries(values).map(([key, value]) => [key, hex(value)]),
-  );
-}
-
-/**
- * "#rgb" or "#rrggbb" → [r, g, b], or null when malformed
- * (wrong length, non-hex characters).
- */
-export function hexToRgb(value) {
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const short = value.match(/^#([0-9a-f])([0-9a-f])([0-9a-f])$/i);
-
-  if (short) {
-    return [
-      parseInt(short[1] + short[1], 16),
-      parseInt(short[2] + short[2], 16),
-      parseInt(short[3] + short[3], 16),
-    ];
-  }
-
-  const long = value.match(/^#([0-9a-f]{6})$/i);
-
-  return long
-    ? [
-        parseInt(long[1].slice(0, 2), 16),
-        parseInt(long[1].slice(2, 4), 16),
-        parseInt(long[1].slice(4, 6), 16),
-      ]
-    : null;
+  return {
+    background: hex(values.background),
+    textShadow: hex(values.textShadow),
+    fonts: {
+      label: { size: values.labelSize, color: hex(values.labelColor) },
+      value: { size: values.valueSize, color: hex(values.valueColor) },
+    },
+    card: {
+      color: null,
+      // The accent stripe defaults to the value colour so the
+      // card reads as part of the theme before any override.
+      accent: hex(values.valueColor),
+    },
+    stick: {
+      box: hex(values.box),
+      crosshair: hex(values.crosshair),
+      dot: hex(values.dot),
+    },
+    bar: { track: hex(values.track), fill: hex(values.fill) },
+    donut: { track: hex(values.donutTrack), fill: hex(values.donutFill) },
+  };
 }
 
 export const THEME_NAMES = [
@@ -83,157 +69,313 @@ export const THEME_NAMES = [
 ];
 
 export const THEMES = {
-  // The original palette.
+  // Original palette — sage + crimson
   default: theme({
     background: "#C6D8D3",
-    box: "#404040",
-    crosshair: "#92898A",
-    dot: "#EE4266",
-    labelOff: "#242424",
-    rpm: "#6A380E",
-    armed: "#1B5E20",
-    motor: "#242424",
-    vCell: "#1A5374",
-    current: "#8E4A0B",
-    maxCurrent: "#5C5C5C",
-    escTemp: "#7A5A00",
-    barMotor: "#2E7D32",
-    barCurrent: "#C8770C",
-    barTrack: "#B9C2BB",
-    textShadow: "#f2f2f2",
+    textShadow: "#E8F0ED",
+    labelSize: 15,
+    labelColor: "#34413D",
+    valueSize: 22,
+    valueColor: "#E83E63",
+    box: "#343D3A",
+    crosshair: "#7F8C87",
+    dot: "#E83E63",
+    track: "#B9C2BB",
+    fill: "#E83E63",
+    donutTrack: "#B9C2BB",
+    donutFill: "#E83E63",
   }),
 
-  // Paper-white light theme: white text on pale gray,
-  // light progress bars, light gray sticks, white dots.
+  // Paper-white light theme — blue accent
   light: theme({
-    background: "#E8EAED",
-    box: "#404040",
-    crosshair: "#B0B3B8",
-    dot: "#EE4266",
-    labelOff: "#FFFFFF",
-    rpm: "#FFFFFF",
-    armed: "#FFFFFF",
-    motor: "#FFFFFF",
-    vCell: "#FFFFFF",
-    current: "#FFFFFF",
-    maxCurrent: "#FFFFFF",
-    escTemp: "#FFFFFF",
-    barMotor: "#05ff6d",
-    barCurrent: "#005fee",
-    barTrack: "#DADCE0",
-    textShadow: "#4c4d4d",
+    background: "#F1F3F5",
+    textShadow: "#FFFFFF",
+    labelSize: 15,
+    labelColor: "#4B5560",
+    valueSize: 22,
+    valueColor: "#1677C8",
+    box: "#30363D",
+    crosshair: "#9AA3AC",
+    dot: "#1677C8",
+    track: "#DADCE0",
+    fill: "#1677C8",
+    donutTrack: "#DADCE0",
+    donutFill: "#1677C8",
   }),
 
-  // Gunmetal + Electric Cyan — clean, modern flight
-  // instrumentation; the cyan dot is the focal point and
-  // the amber RPM a subtle energy accent.
+  // Gunmetal + electric cyan
   gunmetal: theme({
-    background: "#B8C7C9",
-    box: "#252A2E",
-    crosshair: "#65727A",
-    dot: "#00D9FF",
-    labelOff: "#172025",
-    rpm: "#B45F06",
-    armed: "#00AFC7",
-    motor: "#172025",
-    vCell: "#176B85",
-    current: "#B45F06",
-    maxCurrent: "#3B4A52",
-    escTemp: "#7A6114",
-    barMotor: "#00AFC7",
-    barCurrent: "#E07C06",
-    barTrack: "#8FA3A6",
-    textShadow: "#f2f2f2",
+    background: "#B8C5C8",
+    textShadow: "#E8EFF1",
+    labelSize: 15,
+    labelColor: "#273238",
+    valueSize: 22,
+    valueColor: "#00C8F0",
+    box: "#252C31",
+    crosshair: "#68777E",
+    dot: "#00C8F0",
+    track: "#8FA3A6",
+    fill: "#00C8F0",
+    donutTrack: "#8FA3A6",
+    donutFill: "#00C8F0",
   }),
 
-  // Charcoal + Amber — aviation / military instrumentation.
+  // Charcoal + aviation amber
   charcoal: theme({
-    background: "#C2CBC5",
-    box: "#292C2B",
-    crosshair: "#68716D",
+    background: "#BFC8C2",
+    textShadow: "#E7ECE9",
+    labelSize: 15,
+    labelColor: "#29332F",
+    valueSize: 22,
+    valueColor: "#FFB000",
+    box: "#292D2B",
+    crosshair: "#66716B",
     dot: "#FFB000",
-    labelOff: "#1F2422",
-    rpm: "#D47B00",
-    armed: "#4F8A4B",
-    motor: "#1F2422",
-    vCell: "#27718A",
-    current: "#D47B00",
-    maxCurrent: "#565B58",
-    escTemp: "#7A6210",
-    barMotor: "#4F8A4B",
-    barCurrent: "#E69400",
-    barTrack: "#9AA69D",
-    textShadow: "#f2f2f2",
+    track: "#9AA69D",
+    fill: "#FFB000",
+    donutTrack: "#9AA69D",
+    donutFill: "#FFB000",
   }),
 
-  // Slate + Magenta — modern FPV; close to the default
-  // design but more cohesive.
+  // Slate + magenta
   slate: theme({
-    background: "#C4D0D4",
-    box: "#30363A",
-    crosshair: "#727D83",
-    dot: "#FF4F8B",
-    labelOff: "#20272B",
-    rpm: "#B75C3A",
-    armed: "#2F8065",
-    motor: "#20272B",
-    vCell: "#287B9C",
-    current: "#B75C3A",
-    maxCurrent: "#4A5459",
-    escTemp: "#7C5F2E",
-    barMotor: "#3D9B78",
-    barCurrent: "#D96A42",
-    barTrack: "#9AA6AC",
-    textShadow: "#f2f2f2",
+    background: "#C3CDD1",
+    textShadow: "#E8EDF0",
+    labelSize: 15,
+    labelColor: "#293239",
+    valueSize: 22,
+    valueColor: "#F04F88",
+    box: "#30373C",
+    crosshair: "#707C83",
+    dot: "#F04F88",
+    track: "#9AA6AC",
+    fill: "#F04F88",
+    donutTrack: "#9AA6AC",
+    donutFill: "#F04F88",
   }),
 
-  // Black + Lime — aggressive FPV racing / motorsport.
+  // Black + lime — aggressive motorsport
   lime: theme({
-    background: "#CBD3CF",
+    background: "#C8D0CC",
+    textShadow: "#E9EEEC",
+    labelSize: 15,
+    labelColor: "#26302A",
+    valueSize: 22,
+    valueColor: "#B8F500",
     box: "#202522",
-    crosshair: "#59615C",
-    dot: "#B7FF00",
-    labelOff: "#18201A",
-    rpm: "#E07A19",
-    armed: "#659E22",
-    motor: "#18201A",
-    vCell: "#27809A",
-    current: "#E07A19",
-    maxCurrent: "#4A524D",
-    escTemp: "#7A610F",
-    barMotor: "#78B82A",
-    barCurrent: "#F08C1C",
-    barTrack: "#A9B2AA",
-    textShadow: "#f2f2f2",
+    crosshair: "#5D6861",
+    dot: "#B8F500",
+    track: "#A9B2AA",
+    fill: "#B8F500",
+    donutTrack: "#A9B2AA",
+    donutFill: "#B8F500",
   }),
 };
 
-export const THEME_KEYS = Object.keys(THEMES.default);
-
 /**
- * Hex-string form of every theme, for the GUI's swatches
- * and accent wiring. Same structure as THEMES but values
- * keep their "#rrggbb" source form.
+ * "#rgb"/"#rrggbb"/{hex,alpha} → { hex: "#rrggbb", alpha }.
+ * null/undefined passes through (inherit). Malformed input
+ * returns null so callers can drop it with a warning.
  */
-export const THEME_HEX = Object.fromEntries(
-  Object.entries(THEMES).map(([name, colors]) => [
-    name,
-    Object.fromEntries(
-      Object.entries(colors).map(([key, [r, g, b]]) => [
-        key,
-        `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`,
-      ]),
-    ),
-  ]),
-);
+export function normalizeThemeColor(value) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  if (typeof value === "object") {
+    const hexPart = normalizeHex(value.hex);
+    const alpha = Math.round(Number(value.alpha));
+
+    if (!hexPart || !Number.isFinite(alpha)) {
+      return null;
+    }
+
+    return { hex: hexPart, alpha: Math.min(100, Math.max(0, alpha)) };
+  }
+
+  const hexPart = normalizeHex(value);
+
+  return hexPart ? { hex: hexPart, alpha: 100 } : null;
+}
+
+function normalizeHex(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const short = value.match(/^#([0-9a-f])([0-9a-f])([0-9a-f])$/i);
+
+  if (short) {
+    const [r, g, b] = [short[1], short[2], short[3]];
+
+    return `#${(r + r + g + g + b + b).toLowerCase()}`;
+  }
+
+  const long = value.match(/^#([0-9a-f]{6})$/i);
+
+  return long ? `#${long[1].toLowerCase()}` : null;
+}
+
+/** Colour slot → [r, g, b, a(0–255)] for the painters. */
+export function colorOf(slot, fallback = "#202020") {
+  const normalized = normalizeThemeColor(slot) ?? normalizeThemeColor(fallback);
+
+  if (!normalized) {
+    return [0, 0, 0, 255];
+  }
+
+  const h = normalized.hex;
+
+  return [
+    parseInt(h.slice(1, 3), 16),
+    parseInt(h.slice(3, 5), 16),
+    parseInt(h.slice(5, 7), 16),
+    Math.round((normalized.alpha / 100) * 255),
+  ];
+}
+
+/** True when the path exists on the theme structure. */
+export function themeHasPath(theme, path) {
+  let node = theme;
+
+  for (const part of String(path).split(".")) {
+    if (!node || typeof node !== "object" || !(part in node)) {
+      return false;
+    }
+
+    node = node[part];
+  }
+
+  return node !== undefined && node !== null
+    ? true
+    : // A slot whose default is null (card.color) still exists.
+      Object.values(node ?? {}).length === 0;
+}
+
+/** Read a colour slot at a path; null when absent. */
+export function themeColorAt(theme, path) {
+  let node = theme;
+
+  for (const part of String(path).split(".")) {
+    if (!node || typeof node !== "object" || !(part in node)) {
+      return null;
+    }
+
+    node = node[part];
+  }
+
+  return node ?? null;
+}
 
 /**
- * Resolve a theme by name (case-insensitive). Unknown
- * names throw with the valid options listed.
+ * Path-keyed overrides onto a base theme:
+ *   { "stick.dot": "#00FF88" | {hex, alpha},
+ *     "fonts.label.size": 18 }  (number sizes allowed)
+ * Unknown paths, malformed colours, and bad sizes are
+ * ignored. Null values keep the base default. Returns a
+ * NEW theme; the base is never mutated.
+ */
+export function mergeThemeOverrides(baseTheme, overrides) {
+  if (!overrides || typeof overrides !== "object") {
+    return baseTheme;
+  }
+
+  const merged = structuredClone(baseTheme);
+
+  for (const [path, value] of Object.entries(overrides)) {
+    if (value === null || value === undefined) {
+      continue;
+    }
+
+    // The slot must EXIST on the base (even if null, like
+    // card.*), walking every segment.
+    if (!pathExists(baseTheme, path)) {
+      continue;
+    }
+
+    const parts = String(path).split(".");
+
+    if (parts[parts.length - 1] === "size") {
+      const size = Math.round(Number(value));
+
+      if (Number.isFinite(size)) {
+        assignPath(merged, path, Math.min(200, Math.max(8, size)));
+      }
+
+      continue;
+    }
+
+    const leaf = normalizeThemeColor(value);
+
+    if (leaf) {
+      assignPath(merged, path, leaf);
+    }
+  }
+
+  return merged;
+}
+
+function pathExists(root, path) {
+  let node = root;
+
+  for (const part of String(path).split(".")) {
+    if (!node || typeof node !== "object" || !(part in node)) {
+      return false;
+    }
+
+    node = node[part];
+  }
+
+  return true;
+}
+
+function assignPath(root, path, value) {
+  const parts = String(path).split(".");
+  let node = root;
+
+  for (let i = 0; i < parts.length - 1; i += 1) {
+    node = node[parts[i]];
+  }
+
+  node[parts[parts.length - 1]] = value;
+}
+
+/**
+ * Hex-string map of every colour slot, for the GUI's
+ * swatches: { "stick.dot": "#ee4266", ... }. Null slots
+// (card color) are omitted.
+ */
+export function themeColorMap(theme) {
+  const out = {};
+
+  const walk = (node, prefix) => {
+    for (const [key, value] of Object.entries(node)) {
+      const path = prefix ? `${prefix}.${key}` : key;
+
+      if (value && typeof value === "object") {
+        if ("hex" in value) {
+          if (value.hex !== null) {
+            out[path] = value.hex;
+          }
+        } else if (!Array.isArray(value)) {
+          walk(value, path);
+        }
+      }
+    }
+  };
+
+  walk(theme, "");
+
+  return out;
+}
+
+/**
+ * Resolve a theme by name (case-insensitive). Unknown names
+ * throw with the valid options listed.
  */
 export function resolveTheme(name) {
   if (!name) {
-    return THEMES.default;
+    return structuredClone(THEMES.default);
   }
 
   const key = String(name).toLowerCase();
@@ -244,34 +386,5 @@ export function resolveTheme(name) {
     );
   }
 
-  return THEMES[key];
-}
-
-/**
- * Merge user color overrides onto a base theme. Overrides
- * are a plain object of { themeKey: "#rrggbb" } hex strings
- * — unknown keys and malformed values are ignored, valid
- * entries are converted to rgb triplets. Returns a new
- * theme; the base is never mutated.
- */
-export function applyThemeOverrides(baseTheme, overrides) {
-  const merged = { ...baseTheme };
-
-  if (!overrides || typeof overrides !== "object") {
-    return merged;
-  }
-
-  for (const [key, value] of Object.entries(overrides)) {
-    if (!(key in baseTheme)) {
-      continue;
-    }
-
-    const rgb = hexToRgb(value);
-
-    if (rgb) {
-      merged[key] = rgb;
-    }
-  }
-
-  return merged;
+  return structuredClone(THEMES[key]);
 }

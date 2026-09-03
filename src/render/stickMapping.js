@@ -64,8 +64,35 @@ export function clamp(value) {
 /**
  * Per-axis scales for a flight's rcCommand columns.
  * Returns null when the log carries no rcCommand telemetry.
+ *
+ * Memoized per flight object: decoded flights are immutable,
+ * and the render loop calls this once per painted frame —
+ * without the cache every frame would re-scan the whole log.
  */
+const scalesCache = new WeakMap();
+
 export function detectScales(flight) {
+  if (!flight || typeof flight !== "object") {
+    return null;
+  }
+
+  if (scalesCache.has(flight)) {
+    return scalesCache.get(flight);
+  }
+
+  const binding = computeDetectScales(flight);
+
+  scalesCache.set(flight, binding);
+
+  return binding;
+}
+
+/** Test hook: drop memoized bindings. */
+export function clearStickCaches() {
+  scalesCache.clear();
+}
+
+function computeDetectScales(flight) {
   if (!flight || flight.mainFieldNames.length === 0) {
     return null;
   }
@@ -83,7 +110,19 @@ export function detectScales(flight) {
 
   const throttleIndex = flight.mainFieldNames.indexOf(THROTTLE_CHANNEL);
 
+  // v2: per-channel indexes for the pickers — all five
+  // rcCommand slots, present or not. The Betaflight-style
+  // fallback (rcCommand[3] IS throttle) is preserved.
+  const channelIndexes = [0, 1, 2, 3, 4].map((channel) => {
+    if (channel === 4) {
+      return throttleIndex;
+    }
+
+    return columns[channel].index;
+  });
+
   return {
+    channelIndexes,
     columnIndexes: {
       roll: columns[0].index,
       pitch: columns[1].index,
@@ -108,7 +147,11 @@ export function detectScales(flight) {
       roll: detectScale(columns[0].values),
       pitch: detectScale(columns[1].values),
       yaw: detectScale(columns[2].values),
-      collective: detectScale(columns[3].values)
+      collective: detectScale(columns[3].values),
+      throttle:
+        throttleIndex >= 0
+          ? detectScale(flight.mainFrames.map((frame) => frame[throttleIndex]))
+          : detectScale(columns[3].values)
     }
   };
 }

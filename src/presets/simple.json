@@ -1,0 +1,201 @@
+{
+  "version": 2,
+  "canvas": {
+    "width": 800,
+    "height": 200
+  },
+  "grid": {
+    "cols": 14,
+    "rows": 14
+  },
+  "alpha": true,
+  "shadow": true,
+  "theme": "slate",
+  "font": "audiowide",
+  "themeOverrides": {
+    "fonts.label.color": {
+      "hex": "#ffffff",
+      "alpha": 100
+    },
+    "textShadow": {
+      "hex": "#58595a",
+      "alpha": 100
+    }
+  },
+  "items": [
+    {
+      "id": "i4y847g4",
+      "type": "text",
+      "col": 1,
+      "row": 10,
+      "props": {
+        "source": "derived:armed",
+        "customText": "Custom text",
+        "showLabel": true,
+        "alignment": "stacked",
+        "labelSize": null,
+        "labelColor": null,
+        "valueSize": null,
+        "valueColor": null,
+        "cardColor": null,
+        "cardMinWidth": null,
+        "accentColor": null
+      }
+    },
+    {
+      "id": "id7sdfl2",
+      "type": "text",
+      "col": 4,
+      "row": 10,
+      "props": {
+        "source": "derived:motorOn",
+        "customText": "Custom text",
+        "showLabel": true,
+        "alignment": "stacked",
+        "labelSize": null,
+        "labelColor": null,
+        "valueSize": null,
+        "valueColor": null,
+        "cardColor": null,
+        "cardMinWidth": null,
+        "accentColor": null
+      }
+    },
+    {
+      "id": "iqjipz8i",
+      "type": "text",
+      "col": 8,
+      "row": 10,
+      "props": {
+        "source": "derived:throttle",
+        "customText": "Custom text",
+        "showLabel": true,
+        "alignment": "stacked",
+        "labelSize": null,
+        "labelColor": null,
+        "valueSize": null,
+        "valueColor": null,
+        "cardColor": null,
+        "cardMinWidth": null,
+        "accentColor": null
+      }
+    },
+    {
+      "id": "iw25dqyy",
+      "type": "text",
+      "col": 3,
+      "row": 1,
+      "props": {
+        "source": "derived:rpm",
+        "customText": "Custom text",
+        "showLabel": true,
+        "alignment": "inline",
+        "labelSize": 20,
+        "labelColor": null,
+        "valueSize": 100,
+        "valueColor": {
+          "hex": "#00c8f0",
+          "alpha": 100
+        },
+        "cardColor": null,
+        "cardMinWidth": null,
+        "accentColor": null
+      }
+    },
+    {
+      "id": "ijr6hbzg",
+      "type": "text",
+      "col": 1,
+      "row": 7,
+      "props": {
+        "source": "derived:packVolts",
+        "customText": "Custom text",
+        "showLabel": true,
+        "alignment": "stacked",
+        "labelSize": null,
+        "labelColor": null,
+        "valueSize": null,
+        "valueColor": null,
+        "cardColor": null,
+        "cardMinWidth": null,
+        "accentColor": null
+      }
+    },
+    {
+      "id": "i654voii",
+      "type": "text",
+      "col": 5,
+      "row": 7,
+      "props": {
+        "source": "derived:perCell",
+        "customText": "Custom text",
+        "showLabel": true,
+        "alignment": "stacked",
+        "labelSize": null,
+        "labelColor": null,
+        "valueSize": null,
+        "valueColor": null,
+        "cardColor": null,
+        "cardMinWidth": null,
+        "accentColor": null
+      }
+    },
+    {
+      "id": "ietgr5g1",
+      "type": "text",
+      "col": 8,
+      "row": 7,
+      "props": {
+        "source": "derived:current",
+        "customText": "Custom text",
+        "showLabel": true,
+        "alignment": "stacked",
+        "labelSize": null,
+        "labelColor": null,
+        "valueSize": null,
+        "valueColor": null,
+        "cardColor": null,
+        "cardMinWidth": null,
+        "accentColor": null
+      }
+    },
+    {
+      "id": "is6rkdo1",
+      "type": "text",
+      "col": 11,
+      "row": 7,
+      "props": {
+        "source": "derived:maxCurrent",
+        "customText": "Custom text",
+        "showLabel": true,
+        "alignment": "stacked",
+        "labelSize": null,
+        "labelColor": null,
+        "valueSize": null,
+        "valueColor": null,
+        "cardColor": null,
+        "cardMinWidth": null,
+        "accentColor": null
+      }
+    },
+    {
+      "id": "ic4bgckc",
+      "type": "text",
+      "col": 12,
+      "row": 10,
+      "props": {
+        "source": "derived:escTemp",
+        "customText": "Custom text",
+        "showLabel": true,
+        "alignment": "stacked",
+        "labelSize": null,
+        "labelColor": null,
+        "valueSize": null,
+        "valueColor": null,
+        "cardColor": null,
+        "cardMinWidth": null,
+        "accentColor": null
+      }
+    }
+  ]
+}

@@ -3,10 +3,9 @@
 // ======================================================
 //
 // The facade contract: same drawText/measureText surface for
-// the TTF and bitmap backends, role objects accepted as the
-// sizing argument, AA coverage blends src-over, shadows draw
-// proportional offsets, and the layout width budgets hold for
-// every registry font.
+// the TTF and bitmap backends, arbitrary px sizes accepted,
+// AA coverage blends src-over, shadows draw proportional
+// offsets, and per-colour alpha multiplies glyph coverage.
 //
 // ======================================================
 
@@ -20,8 +19,9 @@ import {
   createOverlayTextRenderer,
   clearTextCaches
 } from "../src/render/textRenderer.js";
-import { FONT_IDS, resolveFont } from "../src/render/fonts.js";
-import { paintStickFrame, WIDTH, HEIGHT } from "../src/render/gimbalFrame.js";
+import { FONT_IDS } from "../src/render/fonts.js";
+import { pixelRect } from "../src/render/layout/pixelPrimitives.js";
+import { colorOf } from "../src/render/themes.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const HAS_FONTS = existsSync(join(ROOT, "fonts", "VT323", "VT323-Regular.ttf"));
@@ -42,12 +42,6 @@ function inkPixels(frame) {
 
   return count;
 }
-
-// Column width budgets in gimbalFrame.js:
-//   left text 16..180 (bar at 180) → 164px
-//   right text 640..794 (+3 shadow) → 157px
-const LEFT_BUDGET = 164;
-const RIGHT_BUDGET = 157 - 4; // label gap included in the check below
 
 test("registry fonts all expose the same facade", { skip: !HAS_FONTS }, () => {
   clearTextCaches();
@@ -80,6 +74,17 @@ test("measureText is positive and stable per role", { skip: !HAS_FONTS }, () => 
     );
     assert.equal(renderer.measureText("", renderer.roles.label), 0);
   }
+});
+
+test("arbitrary px sizes measure (v2 per-item sizes)", { skip: !HAS_FONTS }, () => {
+  clearTextCaches();
+
+  const renderer = createOverlayTextRenderer("vt323");
+  const at22 = renderer.measureText("RPM", 22);
+  const at44 = renderer.measureText("RPM", 44);
+
+  assert.ok(at44 > at22, "bigger px → wider text");
+  assert.ok(at22 > 0);
 });
 
 test("ttf and bitmap widths agree on role semantics", { skip: !HAS_FONTS }, () => {
@@ -128,6 +133,26 @@ test("drawText paints anti-aliased ink with the exact color", { skip: !HAS_FONTS
   }
 });
 
+test("per-colour alpha multiplies glyph coverage (v2 opacity)", { skip: !HAS_FONTS }, () => {
+  clearTextCaches();
+  const renderer = createOverlayTextRenderer("geist");
+
+  const opaque = blankFrame();
+  const half = blankFrame();
+
+  renderer.drawText(opaque, FRAME_W, FRAME_H, 10, 10, "RPM", [0, 0, 255], renderer.roles.value, {});
+  renderer.drawText(half, FRAME_W, FRAME_H, 10, 10, "RPM", [0, 0, 255, 128], renderer.roles.value, {});
+
+  let maxA = 0;
+
+  for (let i = 3; i < half.length; i += 4) {
+    maxA = Math.max(maxA, half[i]);
+  }
+
+  assert.ok(maxA < 255, "half-alpha text never reaches full opacity");
+  assert.ok(inkPixels(opaque) > 0);
+});
+
 test("drawText clips safely at frame edges", { skip: !HAS_FONTS }, () => {
   clearTextCaches();
   const renderer = createOverlayTextRenderer("orbitron");
@@ -156,7 +181,6 @@ test("shadow pass draws behind and offset from the fill", { skip: !HAS_FONTS }, 
     "shadow adds ink"
   );
 
-  // Shadow-only pixel: down-right of a glyph, black on alpha.
   let foundShadowPixel = false;
 
   for (let i = 0; i < shadowed.length && !foundShadowPixel; i += 4) {
@@ -173,84 +197,48 @@ test("shadow pass draws behind and offset from the fill", { skip: !HAS_FONTS }, 
   assert.ok(foundShadowPixel, "pure shadow-colored pixel exists");
 });
 
-test("width budgets hold for every registry font", { skip: !HAS_FONTS }, () => {
+test("v2 text card renders label over value through the scene painter", { skip: !HAS_FONTS }, async () => {
   clearTextCaches();
 
-  for (const id of FONT_IDS) {
-    const renderer = createOverlayTextRenderer(id);
+  const schema = await import("../src/render/layout/layoutSchema.js");
+  const { paintScene, buildSceneState } = await import("../src/render/layout/scenePainter.js");
+  const themes = await import("../src/render/themes.js");
 
-    // Left column worst cases (value role).
-    for (const text of ["MOTOR OFF", "DISARMED", "72.5%"]) {
-      const width = renderer.measureText(text, renderer.roles.value);
+  const doc = schema.DEFAULT_LAYOUT();
+  doc.canvas = { width: 320, height: 120 };
+  doc.items.push(schema.createItem("text"));
 
-      assert.ok(
-        width <= LEFT_BUDGET,
-        `${id}: "${text}" = ${width.toFixed(0)}px exceeds left budget ${LEFT_BUDGET}`
-      );
-    }
+  const { layout, boxes } = schema.normalizeLayout(doc);
+  const theme = themes.resolveTheme("default");
+  const state = buildSceneState({});
 
-    // Right column worst case: label + gap + widest value.
-    const gap = 4;
+  const scene = paintScene(layout, boxes, state, theme, { alpha: true });
 
-    const widest = Math.max(
-      renderer.measureText("VBAT", renderer.roles.label) + gap +
-        renderer.measureText("22.20V", renderer.roles.value),
-      renderer.measureText("RPM", renderer.roles.label) + gap +
-        renderer.measureText("21,840", renderer.roles.value),
-      renderer.measureText("AMP", renderer.roles.label) + gap +
-        renderer.measureText("120.5A", renderer.roles.value)
-    );
-
-    assert.ok(
-      widest <= RIGHT_BUDGET + gap,
-      `${id}: right column line = ${widest.toFixed(0)}px exceeds budget`
-    );
-  }
+  // "Custom text" (the default) measured: ink must exist.
+  assert.ok(inkPixels(scene) > 30, "custom text painted ink");
 });
 
-test("full-state frames paint text ink in both columns for every font", { skip: !HAS_FONTS }, () => {
-  clearTextCaches();
+test("colour slots resolve to [r,g,b,a]", () => {
+  assert.deepEqual(colorOf("#FF0000"), [255, 0, 0, 255]);
+  assert.deepEqual(colorOf({ hex: "#00ff00", alpha: 50 }), [0, 255, 0, 128]);
+  assert.deepEqual(colorOf(null, "#102030"), [16, 32, 48, 255]);
+});
 
-  const fullState = {
-    armed: true,
-    motorOn: true,
-    motorPct: 72.5,
-    rpm: 1996,
-    packVolts: 22.2,
-    perCell: 3.7,
-    current: 35.6,
-    maxCurrent: 35.6,
-    escTemp: 63
-  };
+test("pixelRect honours src-over alpha", () => {
+  const w = 8;
+  const h = 8;
+  const frame = blankFrame(w, h);
 
-  for (const id of FONT_IDS) {
-    const frame = paintStickFrame(
-      { left: { x: 0, y: 0 }, right: { x: 0, y: 0 } },
-      fullState,
-      undefined,
-      { font: id }
-    );
-
-    let leftInk = 0;
-    let rightInk = 0;
-
-    for (let y = 0; y < HEIGHT; y += 1) {
-      for (let x = 0; x < WIDTH; x += 1) {
-        const offset = (y * WIDTH + x) * 4;
-
-        if (frame[offset + 3] !== 255) continue;
-        if (frame[offset] === 0x40 && frame[offset + 1] === 0x40) continue; // gimbal box
-        const isBackground =
-          frame[offset] === 0xc6 && frame[offset + 1] === 0xd8 && frame[offset + 2] === 0xd3;
-
-        if (isBackground) continue;
-
-        if (x >= 14 && x < 178) leftInk += 1;
-        if (x >= 638 && x < 798) rightInk += 1;
-      }
-    }
-
-    assert.ok(leftInk > 100, `${id}: left column ink ${leftInk}`);
-    assert.ok(rightInk > 300, `${id}: right column ink ${rightInk}`);
+  function blankFrame(width, height) {
+    return new Uint8Array(width * height * 4);
   }
+
+  pixelRect(frame, w, h, 0, 0, w, h, [255, 0, 0, 255]);
+  pixelRect(frame, w, h, 0, 0, 4, 4, [0, 0, 255, 128]);
+
+  const offset = (1 * w + 1) * 4;
+
+  assert.ok(Math.abs(frame[offset] - 127) <= 1, "red channel halves");
+  assert.equal(frame[offset + 2], 128);
+  assert.equal(frame[offset + 3], 255);
 });

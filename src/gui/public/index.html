@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>RotorFlight Blackbox Video Overlay — stick video console</title>
+<title>RotorFlight Blackbox Video Overlay — overlay designer</title>
 <link rel="stylesheet" href="/app.css">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23202426'/%3E%3Ccircle cx='11' cy='11' r='4' fill='%23EE4266'/%3E%3Ccircle cx='21' cy='21' r='4' fill='%23EE4266'/%3E%3C/svg%3E">
 </head>
@@ -18,16 +18,16 @@
       <span class="brand-dots" aria-hidden="true"><i></i><i></i></span>
       <h1 class="brand">ROTORFLIGHT<span class="brand-thin">—OVERLAY</span></h1>
     </div>
-    <div class="head-status" aria-label="Session status">
+    <div class="head-actions">
       <span class="pill" id="log-pill" hidden></span>
       <span class="pill pill-state" id="ffmpeg-pill" data-state="unknown">FFMPEG …</span>
     </div>
   </header>
 
-  <!-- ============ Main faceplate ============ -->
+  <!-- ============ Main faceplate: 4 columns ============ -->
   <main class="face" id="main">
-    <!-- Left rail: source -->
-    <section class="rail" aria-label="Source">
+    <!-- Column 1: source + flights -->
+    <section class="rail source-rail" aria-label="Source">
       <h2 class="rail-title">SOURCE</h2>
 
       <div class="src-panel" id="src-panel">
@@ -39,25 +39,72 @@
         <h3 class="group-title">FLIGHTS</h3>
         <div class="flight-list" id="flight-list" role="listbox" aria-label="Choose a flight"></div>
         <dl class="flight-facts" id="flight-facts"></dl>
-        <details class="fields-box">
-          <summary>Main fields <span id="field-count" class="count-chip"></span></summary>
-          <ul class="field-list" id="field-list"></ul>
-        </details>
       </section>
     </section>
 
-    <!-- Center: monitor -->
+    <!-- Column 2: telemetry items -->
+    <section class="rail telemetry-rail" aria-label="Telemetry items">
+      <h2 class="rail-title">TELEMETRY</h2>
+
+      <div class="add-locked">
+        <button type="button" class="btn btn-block" id="add-stick-btn" disabled>+ Stick Display</button>
+        <button type="button" class="btn btn-block" id="add-text-btn" disabled>+ Custom Text</button>
+      </div>
+
+      <div class="tele-search">
+        <input class="fld" id="tele-filter" type="search" placeholder="Search fields…" aria-label="Filter telemetry items" disabled>
+      </div>
+
+      <div class="tele-groups" id="tele-groups">
+        <p class="tele-empty" id="tele-empty">Load a log to list its telemetry fields.</p>
+      </div>
+    </section>
+
+    <!-- Column 3: monitor / stage -->
     <section class="stage" aria-label="Preview and render">
       <h2 class="rail-title" id="monitor-heading">MONITOR</h2>
 
+      <!-- Layout strip -->
+      <div class="layout-strip" id="layout-strip">
+        <div class="out-row">
+          <label class="lbl" for="canvas-w">W</label>
+          <input class="fld fld-num" id="canvas-w" type="number" min="64" max="7680" step="2" value="1920">
+        </div>
+        <div class="out-row">
+          <label class="lbl" for="canvas-h">H</label>
+          <input class="fld fld-num" id="canvas-h" type="number" min="64" max="7680" step="2" value="1080">
+        </div>
+        <div class="out-row">
+          <label class="lbl" for="grid-cols">COLS</label>
+          <input class="fld fld-num" id="grid-cols" type="number" min="1" max="48" step="1" value="12">
+        </div>
+        <div class="out-row">
+          <label class="lbl" for="grid-rows">ROWS</label>
+          <input class="fld fld-num" id="grid-rows" type="number" min="1" max="27" step="1" value="6">
+        </div>
+        <label class="alpha-row grid-toggle-row" for="grid-toggle">
+          <input type="checkbox" class="switch-input" id="grid-toggle" checked>
+          <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+          <span class="switch-label">Grid</span>
+        </label>
+        <div class="bg-picker" id="bg-picker" role="radiogroup" aria-label="Preview backdrop">
+          <button type="button" class="bg-swatch" data-bg="theme" role="radio" aria-checked="true" title="Backdrop: theme background"></button>
+          <button type="button" class="bg-swatch" data-bg="light" role="radio" aria-checked="false" title="Backdrop: light"></button>
+          <button type="button" class="bg-swatch" data-bg="dark" role="radio" aria-checked="false" title="Backdrop: dark"></button>
+        </div>
+        <span class="warn-inline" id="canvas-warn" hidden></span>
+      </div>
+
       <div class="bezel" id="bezel">
         <div class="screen-frame" id="screen-frame">
-          <canvas id="screen" width="800" height="262" aria-label="Stick position preview">
-            Your browser does not support canvas previews.
-          </canvas>
-          <div class="screen-idle" id="screen-idle">
-            <p class="idle-mark">NO SIGNAL</p>
-            <p class="idle-sub">Load a flight to preview its sticks here.</p>
+          <div class="canvas-wrap" id="canvas-wrap">
+            <canvas id="screen" width="960" height="540" aria-label="Overlay layout preview"></canvas>
+            <canvas class="grid-canvas" id="grid-canvas" aria-hidden="true"></canvas>
+            <div class="screen-idle" id="screen-idle">
+              <p class="idle-mark">NO SIGNAL</p>
+              <p class="idle-sub">Add telemetry items from the TELEMETRY panel.</p>
+            </div>
+            <div class="drag-ghost" id="drag-ghost" hidden></div>
           </div>
         </div>
       </div>
@@ -65,68 +112,150 @@
       <div class="transport" id="transport">
         <button type="button" class="btn btn-icon" id="play-btn" aria-label="Play preview" aria-pressed="false" disabled>▶</button>
         <div class="scrub-wrap">
-          <canvas id="trace" height="56" aria-hidden="true"></canvas>
           <input type="range" class="scrub" id="scrubber" min="0" max="1000" value="0"
                  step="0.001" aria-label="Scrub through the flight" disabled>
-          <div class="scrub-head" id="scrub-head" hidden></div>
         </div>
         <div class="t-read" aria-live="off">
           <span class="t-label">T</span>
           <output class="t-value" id="t-value">00:00.0</output>
-          <span class="t-label">FRAME</span>
-          <output class="t-value t-value-num" id="frame-value">0</output>
         </div>
       </div>
 
-      <!-- Look strip: horizontal under the monitor -->
-      <section class="look-strip" aria-label="Theme and output">
-        <div class="look-cell look-themes">
-          <h3 class="group-title">THEME</h3>
-          <div class="theme-stack" id="theme-stack" role="radiogroup" aria-label="Video theme"></div>
-        </div>
-
-        <div class="look-cell look-fonts">
-          <h3 class="group-title">FONT</h3>
-          <div class="font-stack" id="font-stack" role="radiogroup" aria-label="Overlay font"></div>
-        </div>
-
-        <div class="look-cell look-alpha">
-          <h3 class="group-title">OUTPUT</h3>
-          <label class="alpha-row" for="alpha-toggle">
-            <input type="checkbox" class="switch-input" id="alpha-toggle">
-            <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
-            <span class="switch-label">Transparent</span>
-          </label>
-          <p class="out-hint" id="alpha-hint" hidden>ProRes 4444 .mov with alpha</p>
-          <label class="alpha-row" for="shadow-toggle">
-            <input type="checkbox" class="switch-input" id="shadow-toggle">
-            <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
-            <span class="switch-label">Text shadow</span>
-          </label>
-        </div>
-
-        <div class="look-cell look-settings">
-          <div class="out-row">
-            <label class="lbl" for="fps-input">FPS</label>
-            <input class="fld fld-num" id="fps-input" type="number" min="1" max="120" step="0.01" value="30" inputmode="decimal">
+      <!-- Layout library: presets + saved layouts, above themes.
+           Collapsible; the action buttons stay visible when collapsed. -->
+      <section class="look-pane layouts-pane" aria-label="Layout library">
+        <div class="layouts-head">
+          <button type="button" class="group-title layouts-toggle" id="layouts-toggle"
+                  aria-expanded="true" aria-controls="layouts-body"
+                  title="Collapse or expand the layout library"><span class="chev">▾</span> LAYOUT</button>
+          <div class="layouts-actions">
+            <button type="button" class="btn btn-tiny" id="layout-new-btn" title="Start a fresh empty layout">New</button>
+            <button type="button" class="btn btn-tiny" id="layout-save-btn" title="Save the current layout">Save</button>
+            <button type="button" class="btn btn-tiny" id="layout-delete-btn" title="Delete the selected user layout" disabled>Delete</button>
           </div>
-          <div class="out-row out-row-clip">
-            <label class="lbl" for="output-input">OUT</label>
-            <input class="fld" id="output-input" type="text" spellcheck="false" aria-describedby="out-hint">
-          </div>
-          <p class="out-hint" id="out-hint">Renders land in <code>out/</code> — only the file name is used.</p>
+        </div>
+        <div class="layouts-body" id="layouts-body">
+          <div class="layouts-hint" id="layouts-hint">Pick a preset or one of your saved layouts.</div>
+          <div class="layout-stack" id="preset-stack" role="listbox" aria-label="Built-in layout presets"></div>
+          <h3 class="group-title layout-user-title" id="user-title" hidden>MY LAYOUTS</h3>
+          <div class="layout-stack" id="user-stack" role="listbox" aria-label="Your saved layouts"></div>
         </div>
       </section>
 
-      <!-- Colors: dedicated full-width pane, always open -->
+      <!-- Theme + font selection sits ABOVE the color customizer -->
+      <section class="look-pane" aria-label="Theme and font">
+        <div class="look-pane-row">
+          <h3 class="group-title">THEME</h3>
+          <div class="theme-stack" id="theme-stack" role="radiogroup" aria-label="Video theme"></div>
+        </div>
+        <div class="look-pane-row">
+          <h3 class="group-title">FONT</h3>
+          <div class="font-stack" id="font-stack" role="radiogroup" aria-label="Overlay font"></div>
+        </div>
+      </section>
+
+      <!-- Theme color customizer -->
       <section class="colors-pane" aria-label="Theme color customizer">
         <div class="colors-pane-head">
           <h3 class="group-title">CUSTOMIZE COLORS</h3>
-          <span class="colors-hint" id="colors-hint">Picking a color overrides the selected theme; the preview and swatches update live.</span>
+          <span class="colors-hint" id="colors-hint">Picking a color overrides the theme default; items inherit unless set explicitly.</span>
           <button type="button" class="btn" id="theme-reset">Reset colors</button>
         </div>
         <div class="color-grid" id="color-grid"></div>
       </section>
+
+      <!-- Output settings: below the color customizer -->
+      <section class="output-pane" aria-label="Output settings">
+        <h3 class="group-title">OUTPUT</h3>
+        <label class="alpha-row" for="alpha-toggle">
+          <input type="checkbox" class="switch-input" id="alpha-toggle" checked>
+          <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+          <span class="switch-label">Transparent</span>
+        </label>
+        <p class="out-hint" id="alpha-hint">Transparent overlay render</p>
+        <div class="out-row" id="format-row">
+          <label class="lbl" for="format-select">FMT</label>
+          <select class="fld" id="format-select" aria-describedby="format-hint"></select>
+        </div>
+        <p class="out-hint" id="format-hint">Codec for the render</p>
+        <label class="alpha-row" for="shadow-toggle">
+          <input type="checkbox" class="switch-input" id="shadow-toggle">
+          <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+          <span class="switch-label">Text shadow</span>
+        </label>
+        <label class="alpha-row" for="preview-toggle">
+          <input type="checkbox" class="switch-input" id="preview-toggle">
+          <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+          <span class="switch-label">Browser preview</span>
+        </label>
+        <p class="out-hint" id="preview-hint">Extra .preview.mp4 for in-browser playback</p>
+        <div class="out-row">
+          <label class="lbl" for="fps-input">FPS</label>
+          <input class="fld fld-num" id="fps-input" type="number" min="1" max="120" step="0.01" value="30" inputmode="decimal">
+        </div>
+        <div class="out-row out-row-clip">
+          <label class="lbl" for="output-input">OUT</label>
+          <input class="fld" id="output-input" type="text" spellcheck="false" aria-describedby="out-hint">
+        </div>
+        <p class="out-hint" id="out-hint">Renders land in <code>out/</code> — only the file name is used.</p>
+
+        <!-- Sync drift compensation: blackbox↔footage clock-rate
+             correction. Lives with the render settings; the
+             config rides the layout doc. -->
+        <div class="sync-divider" role="separator"></div>
+        <h3 class="group-title">SYNC DRIFT</h3>
+        <div class="sync-modes" id="sync-mode-group" role="radiogroup" aria-label="Sync drift compensation mode">
+          <button type="button" class="sync-mode" data-mode="off" role="radio" aria-checked="true">Off</button>
+          <button type="button" class="sync-mode" data-mode="calculate" role="radio" aria-checked="false">Calculate</button>
+          <button type="button" class="sync-mode" data-mode="manual" role="radio" aria-checked="false">Manual</button>
+        </div>
+
+        <div id="sync-calculate" hidden>
+          <p class="sync-sub">External footage settings</p>
+          <div class="out-row">
+            <label class="lbl" for="sync-fps-select">FPS</label>
+            <select class="fld" id="sync-fps-select" aria-describedby="sync-calc-hint">
+              <option value="30">30</option>
+              <option value="60" selected>60</option>
+              <option value="120">120</option>
+            </select>
+          </div>
+          <div class="out-row">
+            <label class="lbl" for="sync-start-input">Start</label>
+            <input class="fld fld-time" id="sync-start-input" type="text" inputmode="numeric" spellcheck="false"
+                   placeholder="00:12:18" aria-describedby="sync-calc-hint">
+          </div>
+          <div class="out-row">
+            <label class="lbl" for="sync-end-input">End</label>
+            <input class="fld fld-time" id="sync-end-input" type="text" inputmode="numeric" spellcheck="false"
+                   placeholder="01:48:42" aria-describedby="sync-calc-hint">
+          </div>
+          <p class="out-hint" id="sync-calc-hint">Arm/disarm switch moments in the footage, mm:ss:frame — the log's ARM-flag span supplies the blackbox side</p>
+        </div>
+
+        <div id="sync-manual" hidden>
+          <div class="out-row">
+            <label class="lbl" for="sync-drift-input">Drift&nbsp;%</label>
+            <input class="fld fld-num" id="sync-drift-input" type="number" step="0.01" value="0" inputmode="decimal">
+          </div>
+          <p class="out-hint">+ means the footage runs long vs the log (2&nbsp;dp)</p>
+        </div>
+
+        <div class="sync-readouts" id="sync-readouts" hidden>
+          <p class="out-hint" id="sync-warn" hidden></p>
+          <div class="out-row sync-read"><span class="lbl">DRIFT</span><output class="t-value" id="sync-drift-out">+0.00%</output></div>
+          <div class="out-row sync-read"><span class="lbl">@60S</span><output class="t-value" id="sync-corr60-out">+0.00s</output></div>
+          <div class="out-row sync-read"><span class="lbl">@END</span><output class="t-value" id="sync-corrend-out">+0.00s</output></div>
+        </div>
+      </section>
+    </section>
+
+    <!-- Column 4: properties -->
+    <section class="rail props-rail" aria-label="Item properties">
+      <h2 class="rail-title">PROPERTIES</h2>
+      <div class="props-body" id="props-body">
+        <p class="props-empty" id="props-empty">Select an item on the canvas to edit its properties.</p>
+      </div>
     </section>
   </main>
 
@@ -144,6 +273,25 @@
     </div>
   </footer>
 </div>
+
+<!-- ============ Save-layout dialog ============ -->
+<dialog id="save-dialog" class="save-dlg" aria-labelledby="save-title">
+  <header class="browse-head">
+    <h2 id="save-title">Save layout</h2>
+    <button type="button" class="btn btn-icon" id="save-close" aria-label="Close save dialog">✕</button>
+  </header>
+  <form method="dialog" id="save-form">
+    <label class="save-row" for="save-name">
+      <span class="lbl">NAME</span>
+      <input class="fld" id="save-name" type="text" spellcheck="false" autocomplete="off" maxlength="80" placeholder="My layout">
+    </label>
+    <p class="out-hint" id="save-hint">Saved to the <code>layouts/</code> folder next to <code>out/</code>.</p>
+    <div class="save-actions">
+      <button type="button" class="btn" id="save-cancel">Cancel</button>
+      <button type="submit" class="btn btn-render" id="save-confirm">Save</button>
+    </div>
+  </form>
+</dialog>
 
 <!-- ============ Browse dialog ============ -->
 <dialog id="browse-dialog" class="browse" aria-labelledby="browse-title">
@@ -171,7 +319,7 @@
 <!-- ============ Video dialog ============ -->
 <dialog id="video-dialog" class="video-dlg" aria-label="Rendered video">
   <header class="browse-head">
-    <h2>Your stick video</h2>
+    <h2>Your overlay video</h2>
     <button type="button" class="btn btn-icon" id="video-close" aria-label="Close video player">✕</button>
   </header>
   <video id="video-player" controls playsinline></video>

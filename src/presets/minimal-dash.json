@@ -1,0 +1,178 @@
+{
+  "version": 2,
+  "canvas": {
+    "width": 900,
+    "height": 78
+  },
+  "grid": {
+    "cols": 30,
+    "rows": 6
+  },
+  "alpha": true,
+  "shadow": false,
+  "theme": "default",
+  "font": "geist",
+  "themeOverrides": {
+    "background": {
+      "hex": "#0e1117",
+      "alpha": 100
+    }
+  },
+  "items": [
+    {
+      "id": "ibddbs2y",
+      "type": "text",
+      "col": 1,
+      "row": 1,
+      "props": {
+        "source": "derived:packVolts",
+        "customText": "Custom text",
+        "showLabel": true,
+        "alignment": "stacked",
+        "labelSize": 10,
+        "labelColor": {
+          "hex": "#636e7f",
+          "alpha": 100
+        },
+        "valueSize": null,
+        "valueColor": {
+          "hex": "#ffffff",
+          "alpha": 100
+        },
+        "cardColor": {
+          "hex": "#1c222e",
+          "alpha": 100
+        },
+        "cardMinWidth": 140,
+        "accentColor": {
+          "hex": "#1abb9b",
+          "alpha": 100
+        }
+      }
+    },
+    {
+      "id": "iumvncfu",
+      "type": "text",
+      "col": 7,
+      "row": 1,
+      "props": {
+        "source": "derived:perCell",
+        "customText": "Custom text",
+        "showLabel": true,
+        "alignment": "stacked",
+        "labelSize": 10,
+        "labelColor": {
+          "hex": "#636e7f",
+          "alpha": 100
+        },
+        "valueSize": null,
+        "valueColor": {
+          "hex": "#ffffff",
+          "alpha": 100
+        },
+        "cardColor": {
+          "hex": "#1c222e",
+          "alpha": 100
+        },
+        "cardMinWidth": 140,
+        "accentColor": {
+          "hex": "#a368da",
+          "alpha": 100
+        }
+      }
+    },
+    {
+      "id": "id9ht6sc",
+      "type": "text",
+      "col": 13,
+      "row": 1,
+      "props": {
+        "source": "derived:rpm",
+        "customText": "Custom text",
+        "showLabel": true,
+        "alignment": "stacked",
+        "labelSize": 10,
+        "labelColor": {
+          "hex": "#636e7f",
+          "alpha": 100
+        },
+        "valueSize": null,
+        "valueColor": {
+          "hex": "#ffffff",
+          "alpha": 100
+        },
+        "cardColor": {
+          "hex": "#1c222e",
+          "alpha": 100
+        },
+        "cardMinWidth": 140,
+        "accentColor": {
+          "hex": "#f0c30f",
+          "alpha": 100
+        }
+      }
+    },
+    {
+      "id": "ikmhg7p4",
+      "type": "text",
+      "col": 19,
+      "row": 1,
+      "props": {
+        "source": "derived:current",
+        "customText": "Custom text",
+        "showLabel": true,
+        "alignment": "stacked",
+        "labelSize": 10,
+        "labelColor": {
+          "hex": "#636e7f",
+          "alpha": 100
+        },
+        "valueSize": null,
+        "valueColor": {
+          "hex": "#ffffff",
+          "alpha": 100
+        },
+        "cardColor": {
+          "hex": "#1c222e",
+          "alpha": 100
+        },
+        "cardMinWidth": 140,
+        "accentColor": {
+          "hex": "#3497db",
+          "alpha": 100
+        }
+      }
+    },
+    {
+      "id": "iz0d6iwr",
+      "type": "text",
+      "col": 25,
+      "row": 1,
+      "props": {
+        "source": "derived:escTemp",
+        "customText": "Custom text",
+        "showLabel": true,
+        "alignment": "stacked",
+        "labelSize": 10,
+        "labelColor": {
+          "hex": "#636e7f",
+          "alpha": 100
+        },
+        "valueSize": null,
+        "valueColor": {
+          "hex": "#ffffff",
+          "alpha": 100
+        },
+        "cardColor": {
+          "hex": "#1c222e",
+          "alpha": 100
+        },
+        "cardMinWidth": 140,
+        "accentColor": {
+          "hex": "#2ecc70",
+          "alpha": 100
+        }
+      }
+    }
+  ]
+}

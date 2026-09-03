@@ -165,7 +165,7 @@ function createTtfRenderer(fontDef) {
     /**
      * Draw text at (x, y = top of cap line) in color. Returns
      * the advance width, so callers can chain after the text
-     * (the LABEL_GAP math in gimbalFrame.js).
+     * (the LABEL_GAP math in the widget painters).
      * options2.shadowColor draws a hard drop shadow first,
      * offset proportional to the glyph size.
      */
@@ -256,10 +256,14 @@ function blitGlyph(frame, width, height, glyph, x, y, color) {
   }
 }
 
-/** Src-over blend of one pixel at fractional alpha (0..1). */
+/** Src-over blend of one pixel at fractional alpha (0..1).
+ * The draw colour may carry its own alpha in colour[3]
+ * (0–255, v2 per-slot opacity); it multiplies the glyph
+ * coverage so translucent text blends like geometry. */
 function blendCoverage(frame, frameWidth, x, y, color, alpha) {
   const offset = (y * frameWidth + x) * 4;
-  const srcA = Math.max(0, Math.min(1, alpha));
+  const colorA = (color[3] === undefined ? 255 : color[3]) / 255;
+  const srcA = Math.max(0, Math.min(1, alpha * colorA));
 
   if (srcA <= 0) {
     return;

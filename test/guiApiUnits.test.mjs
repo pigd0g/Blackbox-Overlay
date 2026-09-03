@@ -91,11 +91,11 @@ test("resolveOutputPath falls back to the log-based default", () => {
   assert.match(result, /file-flight3-overlay\.mp4$/);
 });
 
-test("resolveOutputPath forces .webm for default alpha renders", () => {
+test("resolveOutputPath forces .mov for default alpha renders", () => {
   const named = resolveOutputPath("my-video.mp4", "a.bbl", 1, true);
 
   assertInOutDir(named);
-  assert.equal(resolve(named), resolve(OUT_DIR, "my-video.webm"));
+  assert.equal(resolve(named), resolve(OUT_DIR, "my-video.mov"));
 
   const fallback = resolveOutputPath("", "some/log/file.bbl", 3, true);
 
@@ -103,7 +103,7 @@ test("resolveOutputPath forces .webm for default alpha renders", () => {
     resolve(fallback),
     resolve(suggestOutputPath("some/log/file.bbl", 3, true))
   );
-  assert.match(fallback, /file-flight3-overlay\.webm$/);
+  assert.match(fallback, /file-flight3-overlay\.mov$/);
 });
 
 test("resolveOutputPath follows the chosen alpha format", () => {
@@ -121,10 +121,10 @@ test("resolveOutputPath follows the chosen alpha format", () => {
     resolve(OUT_DIR, "clip.mov")
   );
 
-  // Unknown ids fall back to the default format (.webm).
+  // Unknown ids fall back to the default format (.mov).
   assert.equal(
     resolve(resolveOutputPath("clip.mp4", "a.bbl", 1, true, "banana")),
-    resolve(OUT_DIR, "clip.webm")
+    resolve(OUT_DIR, "clip.mov")
   );
 
   // Log-based defaults carry the format extension too.
@@ -147,10 +147,10 @@ test("suggestOutputPath picks the extension per format", () => {
     /overlay\.mov$/
   );
 
-  // Null format falls back to the registry default (.webm).
+  // Null format falls back to the registry default (.mov).
   assert.match(
     suggestOutputPath("a.bbl", 1, true),
-    /overlay\.webm$/
+    /overlay\.mov$/
   );
 });
 

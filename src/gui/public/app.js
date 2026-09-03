@@ -163,7 +163,7 @@ const state = {
   backdrop: BACKDROP_DEFAULT_KEY,
   // Output formats (server catalog) + active id.
   outputFormats: [],
-  format: "vp9-yuva420p",
+  format: "png-rgba",
   // Layout library: { presets: [{id,name}], user: [{id,name,mtime}] }
   layouts: { presets: [], user: [] },
   // Active layout identity: { id, user } or null for the
@@ -3505,11 +3505,11 @@ async function boot() {
     state.fonts.default = serverState.fonts.default || "vt323";
     state.layout.font = serverState.fonts.default || "vt323";
 
-    // Codec menu (alpha + H.264); falls back to VP9-only when
+    // Codec menu (alpha + H.264); falls back to PNG-only when
     // an older server build replies without the catalog.
     state.outputFormats = Array.isArray(serverState.outputFormats)
       ? serverState.outputFormats
-      : [{ id: "vp9-yuva420p", label: "VP9 alpha 4:2:0 (Small)", extension: ".webm", alpha: true }];
+      : [{ id: "png-rgba", label: "PNG lossless (Medium)", extension: ".mov", alpha: true }];
     state.format = activeFormat()?.id ?? state.outputFormats[0].id;
 
     syncPreviewControls();

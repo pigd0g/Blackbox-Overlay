@@ -7,9 +7,9 @@
 // turns an entry into its encoder argument list.
 //
 // Alpha entries (transparent overlays):
-//   D  vp9-yuva420p    VP9 alpha 4:2:0       .webm  (small, default)
-//   C  png-rgba        PNG lossless          .mov   (medium)
-//   A  prores4444-12   ProRes 4444 (12-bit)  .mov   (large)
+//   D  png-rgba        PNG lossless          .mov   (default)
+//   A  vp9-yuva420p    VP9 alpha 4:2:0       .webm  (small)
+//   C  prores4444-12   ProRes 4444 (12-bit)  .mov   (large)
 //
 // Opaque entry (filled with the theme background):
 //   h264-yuv420p       H.264 .mp4            .mp4
@@ -43,18 +43,18 @@
  */
 export const OUTPUT_FORMATS = [
   {
-    id: "vp9-yuva420p",
-    label: "VP9 alpha 4:2:0 (Small)",
-    extension: ".webm",
-    alpha: true,
-    args: ["-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-crf", "30", "-b:v", "0"]
-  },
-  {
     id: "png-rgba",
     label: "PNG lossless (Medium)",
     extension: ".mov",
     alpha: true,
     args: ["-c:v", "png", "-pix_fmt", "rgba"]
+  },
+  {
+    id: "vp9-yuva420p",
+    label: "VP9 alpha 4:2:0 (Small)",
+    extension: ".webm",
+    alpha: true,
+    args: ["-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-crf", "30", "-b:v", "0"]
   },
   {
     id: "prores4444-12",
@@ -81,7 +81,7 @@ const FORMAT_BY_ID = new Map(
 
 /**
  * Resolve a requested format id, falling back to the default
- * (VP9 alpha 4:2:0) for null/garbage.
+ * (PNG lossless) for null/garbage.
  *
  * @param {string|null} [id]
  * @returns {OutputFormat}

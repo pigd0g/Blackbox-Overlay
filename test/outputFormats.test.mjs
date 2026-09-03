@@ -17,17 +17,17 @@ test("registry carries the alpha trio plus opaque H.264", () => {
   assert.deepEqual(
     OUTPUT_FORMATS.map((format) => format.id),
     [
-      "vp9-yuva420p",
       "png-rgba",
+      "vp9-yuva420p",
       "prores4444-12",
       "h264-yuv420p"
     ]
   );
 });
 
-test("default format is VP9 alpha (first entry)", () => {
+test("default format is PNG lossless (first entry)", () => {
   assert.equal(DEFAULT_OUTPUT_FORMAT, OUTPUT_FORMATS[0].id);
-  assert.equal(DEFAULT_OUTPUT_FORMAT, "vp9-yuva420p");
+  assert.equal(DEFAULT_OUTPUT_FORMAT, "png-rgba");
 });
 
 test("each format exposes id/label/extension/args", () => {
@@ -100,8 +100,8 @@ test("formatsForMode filters by transparency", () => {
   const opaque = formatsForMode(false).map((format) => format.id);
 
   assert.deepEqual(transparent, [
-    "vp9-yuva420p",
     "png-rgba",
+    "vp9-yuva420p",
     "prores4444-12"
   ]);
   assert.deepEqual(opaque, ["h264-yuv420p"]);

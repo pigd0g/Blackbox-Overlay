@@ -123,7 +123,7 @@ function testLayout(overrides = {}) {
   };
 }
 
-test("lists the four bundled presets with humanized names", async () => {
+test("lists the five bundled presets with humanized names", async () => {
   if (!hasFixture) return;
 
   const response = await fetch(`${base}/api/layouts`);
@@ -140,7 +140,8 @@ test("lists the four bundled presets with humanized names", async () => {
     "simple",
     "simple-sticks",
     "minimal-dash",
-    "donuts"
+    "donuts",
+    "dark-with-sticks"
   ]) {
     assert.ok(ids.includes(expected), `preset ${expected} listed`);
   }

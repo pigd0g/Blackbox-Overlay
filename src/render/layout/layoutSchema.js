@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — LAYOUT SCHEMA (v2)
+// Blackbox-Overlay — LAYOUT SCHEMA (v2)
 // ======================================================
 //
 // The layout document: canvas resolution, editable grid,

@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — REAL-LOG INTEGRATION TEST
+// Blackbox-Overlay — REAL-LOG INTEGRATION TEST
 // ======================================================
 //
 // Decodes every .bbl fixture in test/fixtures/ and checks

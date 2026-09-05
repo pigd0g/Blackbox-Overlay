@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — MINIMAL TTF ENGINE
+// Blackbox-Overlay — MINIMAL TTF ENGINE
 // ======================================================
 //
 // Pure-JS TrueType outline parser — no dependencies, same

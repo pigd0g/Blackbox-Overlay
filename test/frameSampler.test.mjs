@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — FRAME SAMPLER TESTS
+// Blackbox-Overlay — FRAME SAMPLER TESTS
 // ======================================================
 //
 // Uses the real fixture log when present; skips cleanly

@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — TEXT RENDERER TESTS
+// Blackbox-Overlay — TEXT RENDERER TESTS
 // ======================================================
 //
 // The facade contract: same drawText/measureText surface for

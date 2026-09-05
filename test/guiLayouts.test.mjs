@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — LAYOUT LIBRARY TESTS
+// Blackbox-Overlay — LAYOUT LIBRARY TESTS
 // ======================================================
 //
 // Exercises /api/layouts (list, load, save, delete) against

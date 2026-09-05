@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — STICK MAPPING UNIT TESTS
+// Blackbox-Overlay — STICK MAPPING UNIT TESTS
 // ======================================================
 
 import { test } from "node:test";

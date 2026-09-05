@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — TELEMETRY READING TESTS
+// Blackbox-Overlay — TELEMETRY READING TESTS
 // ======================================================
 
 import { test } from "node:test";

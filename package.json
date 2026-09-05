@@ -1,11 +1,11 @@
 {
-  "name": "rotorflight-blackbox-video-overlay",
+  "name": "blackbox-overlay",
   "version": "2.0.0",
   "description": "Rotorflight blackbox (.bbl) log reader with a local GUI overlay designer and layout-driven video rendering",
   "type": "module",
   "main": "src/gui/serve.js",
   "bin": {
-    "rotorflight-blackbox-video-overlay": "src/gui/serve.js"
+    "blackbox-overlay": "src/gui/serve.js"
   },
   "scripts": {
     "test": "node --test",

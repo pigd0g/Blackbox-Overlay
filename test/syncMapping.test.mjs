@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — SYNC DRIFT TESTS
+// Blackbox-Overlay — SYNC DRIFT TESTS
 // ======================================================
 //
 // Pure tests for the sync drift compensation layer:

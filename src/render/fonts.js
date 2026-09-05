@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — FONT REGISTRY
+// Blackbox-Overlay — FONT REGISTRY
 // ======================================================
 //
 // Single source of truth for the overlay's typefaces. Every

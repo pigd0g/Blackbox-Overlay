@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — FIELD STATISTICS
+// Blackbox-Overlay — FIELD STATISTICS
 // ======================================================
 //
 // Per-field whole-log statistics for the layout engine's

@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — SCENE PAINTER (v2)
+// Blackbox-Overlay — SCENE PAINTER (v2)
 // ======================================================
 //
 // The ONE renderer for both the GUI preview and the final

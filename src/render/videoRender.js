@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — VIDEO RENDER ORCHESTRATION (v2)
+// Blackbox-Overlay — VIDEO RENDER ORCHESTRATION (v2)
 // ======================================================
 //
 // Renders a decoded flight through the layout pipeline:

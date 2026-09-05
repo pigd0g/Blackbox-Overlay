@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — GLYPH RASTERIZER
+// Blackbox-Overlay — GLYPH RASTERIZER
 // ======================================================
 //
 // Turns parsed TrueType outlines (fontEngine.js) into

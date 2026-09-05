@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — OUTPUT FORMAT TESTS
+// Blackbox-Overlay — OUTPUT FORMAT TESTS
 // ======================================================
 
 import { test } from "node:test";

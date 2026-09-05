@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — VALUE FORMAT / FIELD KNOWLEDGE
+// Blackbox-Overlay — VALUE FORMAT / FIELD KNOWLEDGE
 // ======================================================
 //
 // Single table of field knowledge for the v2 layout editor:

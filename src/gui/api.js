@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — GUI API HANDLERS (v2)
+// Blackbox-Overlay — GUI API HANDLERS (v2)
 // ======================================================
 //
 // The logic behind the local GUI server: log decoding with

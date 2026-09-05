@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — SCENE STATE (v2)
+// Blackbox-Overlay — SCENE STATE (v2)
 // ======================================================
 //
 // Resolves what every item displays for one sampled moment:

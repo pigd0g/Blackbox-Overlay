@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — THEME TESTS (v2)
+// Blackbox-Overlay — THEME TESTS (v2)
 // ======================================================
 //
 // Themes are STRUCTURAL defaults: fonts, card, stick, bar,

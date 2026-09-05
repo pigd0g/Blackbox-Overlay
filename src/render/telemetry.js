@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — TELEMETRY READING (battery, RPM, motor, ESC)
+// Blackbox-Overlay — TELEMETRY READING (battery, RPM, motor, ESC)
 // ======================================================
 //
 // Shared telemetry helpers for the on-frame status bar:

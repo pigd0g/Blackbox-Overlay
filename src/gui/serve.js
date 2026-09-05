@@ -1,8 +1,8 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — LOCAL GUI SERVER (v2)
+// Blackbox-Overlay — LOCAL GUI SERVER (v2)
 // ======================================================
 //
-// Serves the RotorFlight-Blackbox-Video-Overlay console
+// Serves the Blackbox-Overlay console
 // (src/gui/public) and its JSON/preview/SSE API from
 // src/gui/api.js.
 //
@@ -521,7 +521,7 @@ function parseServeArgs(argv) {
 }
 
 function printServeUsage() {
-  console.log(`RotorFlight-Blackbox-Video-Overlay GUI — local console for decoding .bbl logs and designing overlay layouts
+  console.log(`Blackbox-Overlay GUI — local console for decoding .bbl logs and designing overlay layouts
 
 Usage:
   node src/gui/serve.js [options]
@@ -565,7 +565,7 @@ async function main() {
 
   const address = `http://127.0.0.1:${server.address().port}`;
 
-  console.log(`RotorFlight-Blackbox-Video-Overlay console running at ${address}`);
+  console.log(`Blackbox-Overlay console running at ${address}`);
   console.log("Press Ctrl+C to stop.");
 
   if (options.open) {
@@ -582,6 +582,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(`RotorFlight-Blackbox-Video-Overlay GUI failed: ${error.message}`);
+  console.error(`Blackbox-Overlay GUI failed: ${error.message}`);
   process.exitCode = 1;
 });

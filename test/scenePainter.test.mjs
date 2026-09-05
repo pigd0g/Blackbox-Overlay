@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — SCENE / WIDGET PAINTER TESTS (v2)
+// Blackbox-Overlay — SCENE / WIDGET PAINTER TESTS (v2)
 // ======================================================
 //
 // Pixel assertions at known coordinates replace the v1

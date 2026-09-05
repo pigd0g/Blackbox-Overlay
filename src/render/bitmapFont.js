@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — TINY BITMAP FONT (5x7)
+// Blackbox-Overlay — TINY BITMAP FONT (5x7)
 // ======================================================
 //
 // Classic 5x7 pixel font for on-frame labels: uppercase

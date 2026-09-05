@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — PIXEL PRIMITIVES (v2)
+// Blackbox-Overlay — PIXEL PRIMITIVES (v2)
 // ======================================================
 //
 // Dimension-parametrized drawing primitives for the scene

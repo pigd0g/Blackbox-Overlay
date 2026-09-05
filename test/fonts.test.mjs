@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — FONT REGISTRY TESTS
+// Blackbox-Overlay — FONT REGISTRY TESTS
 // ======================================================
 
 import { test } from "node:test";

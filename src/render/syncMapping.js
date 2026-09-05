@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — SYNC DRIFT COMPENSATION
+// Blackbox-Overlay — SYNC DRIFT COMPENSATION
 // ======================================================
 //
 // The dedicated time-mapping layer between the blackbox

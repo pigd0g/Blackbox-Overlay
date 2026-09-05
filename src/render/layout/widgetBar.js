@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — PROGRESS BAR WIDGET (v2)
+// Blackbox-Overlay — PROGRESS BAR WIDGET (v2)
 // ======================================================
 //
 // Horizontal or vertical progress bar with the rounded-pill

@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — CONSOLE FRONTEND (v2)
+// Blackbox-Overlay — CONSOLE FRONTEND (v2)
 // ======================================================
 //
 // Vanilla JS driving the overlay designer:

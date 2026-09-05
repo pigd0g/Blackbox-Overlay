@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — OUTPUT FORMATS
+// Blackbox-Overlay — OUTPUT FORMATS
 // ======================================================
 //
 // The codec registry behind the GUI's FMT dropdown. Each

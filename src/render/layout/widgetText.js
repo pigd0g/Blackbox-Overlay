@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — TEXT WIDGET (v2)
+// Blackbox-Overlay — TEXT WIDGET (v2)
 // ======================================================
 //
 // Label + Value card, auto-sized to its measured content:

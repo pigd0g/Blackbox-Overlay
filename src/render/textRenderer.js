@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — TEXT RENDER FACADE
+// Blackbox-Overlay — TEXT RENDER FACADE
 // ======================================================
 //
 // The single text API the overlay paints with. Two backends

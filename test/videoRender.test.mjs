@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — VIDEO RENDER INTEGRATION TEST (v2)
+// Blackbox-Overlay — VIDEO RENDER INTEGRATION TEST (v2)
 // ======================================================
 //
 // Renders tiny synthetic videos through a layout and

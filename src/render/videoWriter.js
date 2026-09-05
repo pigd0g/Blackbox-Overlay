@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — VIDEO WRITER
+// Blackbox-Overlay — VIDEO WRITER
 // ======================================================
 //
 // Streams raw RGBA frames into an ffmpeg process via

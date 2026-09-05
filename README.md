@@ -1,6 +1,6 @@
-# RotorFlight-Blackbox-Video-Overlay
+# Blackbox-Overlay
 
-A **Rotorflight blackbox (`.bbl`) log tool** with a local GUI overlay designer. RotorFlight-Blackbox-Video-Overlay decodes binary blackbox logs, summarizes each recorded flight, and lets you design a custom overlay layout — telemetry cards, stick displays, progress bars, and donut charts on a user-defined canvas and grid — rendered to video (`.mp4`, or alpha-capable `.mov`).
+A **Rotorflight blackbox (`.bbl`) log tool** with a local GUI overlay designer. Blackbox-Overlay decodes binary blackbox logs, summarizes each recorded flight, and lets you design a custom overlay layout — telemetry cards, stick displays, progress bars, and donut charts on a user-defined canvas and grid — rendered to video (`.mp4`, or alpha-capable `.mov`).
 
 ## Features
 
@@ -34,9 +34,9 @@ Clone the repository, then either run it directly or install globally:
 # Run directly
 npm run gui
 
-# Or link it as the `rotorflight-blackbox-video-overlay` command
+# Or link it as the `blackbox-overlay` command
 npm install -g .
-rotorflight-blackbox-video-overlay [--port N] [--no-open]
+blackbox-overlay [--port N] [--no-open]
 ```
 
 ## GUI console

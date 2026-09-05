@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — STICK WIDGET (v2)
+// Blackbox-Overlay — STICK WIDGET (v2)
 // ======================================================
 //
 // One configurable stick display: theme box + crosshair +

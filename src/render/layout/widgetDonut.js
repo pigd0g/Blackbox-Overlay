@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — DONUT CHART WIDGET (v2)
+// Blackbox-Overlay — DONUT CHART WIDGET (v2)
 // ======================================================
 //
 // Analytic ring: track drawn as the full annulus, value arc

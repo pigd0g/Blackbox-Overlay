@@ -1,5 +1,5 @@
 // ======================================================
-// RotorFlight-Blackbox-Video-Overlay — GUI SERVER SMOKE TESTS (v2)
+// Blackbox-Overlay — GUI SERVER SMOKE TESTS (v2)
 // ======================================================
 //
 // Boots the real GUI server on an ephemeral port and walks

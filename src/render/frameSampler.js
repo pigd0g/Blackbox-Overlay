@@ -10,7 +10,9 @@
 // Slow frames (flightModeFlags etc.) arrive keyed by the
 // main-frame index they follow; a cursor carries the most
 // recent slow values forward as sampling walks through the
-// flight.
+// flight. GPS frames use the same afterMainFrame keying with
+// the same last-fix-wins carry-forward (GPS updates at a few
+// Hz against a kHz control loop, so held values are correct).
 //
 // ======================================================
 
@@ -91,6 +93,69 @@ function buildFlightSampler(flight) {
   const durationSeconds = (lastTimeUs + typicalIntervalUs) / 1_000_000;
 
   const slowFrames = flight.slowFrames ?? [];
+
+  // ------------------------------------------------------
+  // GPS column binding
+  //
+  // GPS frames are sparse side-channel records; the sampler
+  // exposes only the decoded, unit-corrected values widgets
+  // need. speed: cm/s → km/h, altitude: cm → m, course:
+  // deci-degrees → degrees. Coordinates stay raw ×1e7 and are
+  // formatted at display time (see sceneState gpsCoords).
+  // ------------------------------------------------------
+  const GPS_SPEED_CM_S_TO_KMH = 0.036;
+  const GPS_ALT_CM_TO_M = 0.01;
+  const GPS_COURSE_DECI_DEG_TO_DEG = 0.1;
+
+  const gpsFieldNames = flight.gpsFieldNames ?? [];
+  const gpsFrames = flight.gpsFrames ?? [];
+
+  const gpsIndex = (name) => gpsFieldNames.indexOf(name);
+
+  const gpsIndexes = {
+    speed: gpsIndex("GPS_speed"),
+    altitude: gpsIndex("GPS_altitude"),
+    numSat: gpsIndex("GPS_numSat"),
+    course: gpsIndex("GPS_ground_course"),
+    lat: gpsIndex("GPS_coord[0]"),
+    lon: gpsIndex("GPS_coord[1]")
+  };
+
+  const hasGps = gpsFrames.length > 0 && gpsFieldNames.length > 0;
+
+  function readGpsTelemetry(values) {
+    // No GPS evidence at all → keys stay absent. A GPS flight
+    // before its first fix → keys present, values null.
+    if (!hasGps) {
+      return null;
+    }
+
+    const read = (slot) => {
+      if (!values) {
+        return NaN;
+      }
+
+      const index = gpsIndexes[slot];
+
+      return index >= 0 ? Number(values[index]) : NaN;
+    };
+
+    const speedRaw = read("speed");
+    const altRaw = read("altitude");
+    const satRaw = read("numSat");
+    const courseRaw = read("course");
+    const latRaw = read("lat");
+    const lonRaw = read("lon");
+
+    return {
+      gpsSpeed: Number.isFinite(speedRaw) ? speedRaw * GPS_SPEED_CM_S_TO_KMH : null,
+      gpsAltitude: Number.isFinite(altRaw) ? altRaw * GPS_ALT_CM_TO_M : null,
+      gpsSats: Number.isFinite(satRaw) && satRaw > 0 ? Math.round(satRaw) : null,
+      gpsCourse: Number.isFinite(courseRaw) ? courseRaw * GPS_COURSE_DECI_DEG_TO_DEG : null,
+      gpsLat: Number.isFinite(latRaw) ? latRaw : null,
+      gpsLon: Number.isFinite(lonRaw) ? lonRaw : null
+    };
+  }
 
   // ------------------------------------------------------
   // ARM span detection (the flight timeline for sync drift)
@@ -273,6 +338,20 @@ function buildFlightSampler(flight) {
       slowCursor += 1;
     }
 
+    // Same last-fix-wins carry-forward for GPS frames. Before
+    // the first fix the cursor holds nothing: GPS readouts
+    // show "--" until the receiver reports.
+    let gpsValues = null;
+    let gpsCursor = 0;
+
+    while (
+      gpsCursor < gpsFrames.length &&
+      gpsFrames[gpsCursor].afterMainFrame <= row
+    ) {
+      gpsValues = gpsFrames[gpsCursor].values;
+      gpsCursor += 1;
+    }
+
     const mainFrame = flight.mainFrames[row];
     const positions = mapStickPositions(mainFrame, binding);
     const toggles = readToggleState(mainFrame, slowValues, binding);
@@ -291,6 +370,12 @@ function buildFlightSampler(flight) {
 
     // Peak current so far (running max over [0, row]).
     telemetry.maxCurrent = maxCurrentUpTo(row);
+
+    const gps = readGpsTelemetry(gpsValues);
+
+    if (gps) {
+      Object.assign(telemetry, gps);
+    }
 
     return { row, positions, toggles, telemetry };
   }

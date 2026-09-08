@@ -73,6 +73,9 @@ export function decodeBblFile(input) {
       slowFieldNames: parsedHeader.fields.slow
         ? parsedHeader.fields.slow.names
         : [],
+      gpsFieldNames: parsedHeader.fields.gps
+        ? parsedHeader.fields.gps.names
+        : [],
       mainFrames: decoded.mainFrames,
       slowFrames: decoded.slowFrames,
       gpsFrames: decoded.gpsFrames,

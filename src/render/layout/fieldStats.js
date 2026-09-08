@@ -17,7 +17,17 @@
 // same column knowledge the scene sampler uses, so both
 // modes see identical decoded values.
 //
+// GPS sources read per-row aligned arrays built by one
+// O(main + gps) pass: each GPS frame fills every main row it
+// covers (last fix wins, NaN before the first fix), so the
+// prefix-max scan sees exactly the values the sampler shows.
+//
 // ======================================================
+
+// GPS logged-unit conversions — must match frameSampler.js.
+const GPS_SPEED_CM_S_TO_KMH = 0.036;
+const GPS_ALT_CM_TO_M = 0.01;
+const GPS_COURSE_DECI_DEG_TO_DEG = 0.1;
 
 const DERIVED_READERS = {
   rpm: (frame, b) => {
@@ -61,6 +71,35 @@ const DERIVED_READERS = {
   }
 };
 
+// GPS readers consume the aligned per-row arrays (see
+// buildGpsColumn), not main frames.
+const GPS_READERS = {
+  gpsSpeed: (values) => {
+    const raw = values.speed;
+
+    return Number.isFinite(raw) ? raw * GPS_SPEED_CM_S_TO_KMH : NaN;
+  },
+  gpsAltitude: (values) => {
+    const raw = values.altitude;
+
+    return Number.isFinite(raw) ? raw * GPS_ALT_CM_TO_M : NaN;
+  },
+  gpsSats: (values) => {
+    const raw = values.numSat;
+
+    return Number.isFinite(raw) && raw > 0 ? Math.round(raw) : NaN;
+  },
+  gpsCourse: (values) => {
+    const raw = values.course;
+
+    return Number.isFinite(raw) ? raw * GPS_COURSE_DECI_DEG_TO_DEG : NaN;
+  }
+};
+
+const GPS_KEYS = new Set(
+  Object.keys(GPS_READERS)
+);
+
 /**
  * Statistics for one decoded flight. Memoized per flight
  * object — decoded flights are immutable, and the GUI preview
@@ -97,6 +136,8 @@ function buildFieldStats(flight) {
   const cache = new Map();
   let cells = null;
   let cellsResolved = false;
+  let gpsColumns = null;
+  let gpsResolved = false;
 
   const indexOf = (name) => flight.mainFieldNames.indexOf(name);
 
@@ -160,11 +201,94 @@ function buildFieldStats(flight) {
     return cells;
   }
 
-  function readValue(sourceId, frame) {
+  /**
+   * One pass aligning GPS frames onto main-frame rows: for
+   * every GPS slot build an array with one entry per main
+   * row, carrying the most recent fix forward (NaN before
+   * the first fix). Memoized like the cell latch. Returns
+   * null when the flight has no GPS frames or field names.
+   */
+  function latchGpsColumns() {
+    if (gpsResolved) {
+      return gpsColumns;
+    }
+
+    gpsResolved = true;
+
+    const frames = flight.gpsFrames ?? [];
+    const names = flight.gpsFieldNames ?? [];
+
+    if (frames.length === 0 || names.length === 0) {
+      gpsColumns = null;
+      return gpsColumns;
+    }
+
+    const columnOf = (name) => names.indexOf(name);
+
+    const slots = {
+      speed: columnOf("GPS_speed"),
+      altitude: columnOf("GPS_altitude"),
+      numSat: columnOf("GPS_numSat"),
+      course: columnOf("GPS_ground_course")
+    };
+
+    const mainFrames = flight.mainFrames;
+    const arrays = {};
+
+    for (const [slot, index] of Object.entries(slots)) {
+      if (index >= 0) {
+        arrays[slot] = new Array(mainFrames.length).fill(NaN);
+      }
+    }
+
+    let cursor = 0;
+    let current = null;
+
+    for (let row = 0; row < mainFrames.length; row += 1) {
+      while (
+        cursor < frames.length &&
+        frames[cursor].afterMainFrame <= row
+      ) {
+        current = frames[cursor].values;
+        cursor += 1;
+      }
+
+      if (!current) {
+        continue;
+      }
+
+      for (const [slot, array] of Object.entries(arrays)) {
+        array[row] = Number(current[slots[slot]]);
+      }
+    }
+
+    gpsColumns = arrays;
+
+    return gpsColumns;
+  }
+
+  function readValue(sourceId, frame, row) {
     const id = String(sourceId ?? "");
 
     if (id.startsWith("derived:")) {
       const key = id.slice("derived:".length);
+
+      if (GPS_KEYS.has(key)) {
+        const columns = latchGpsColumns();
+        const values = columns ? {
+          speed: columns.speed ? columns.speed[row] : NaN,
+          altitude: columns.altitude ? columns.altitude[row] : NaN,
+          numSat: columns.numSat ? columns.numSat[row] : NaN,
+          course: columns.course ? columns.course[row] : NaN
+        } : null;
+
+        if (!values) {
+          return NaN;
+        }
+
+        return GPS_READERS[key](values);
+      }
+
       const reader = DERIVED_READERS[key];
 
       if (!reader) {
@@ -225,7 +349,7 @@ function buildFieldStats(flight) {
       const prefixMax = new Array(frames.length).fill(null);
 
       for (let row = 0; row < frames.length; row += 1) {
-        const value = readValue(sourceId, frames[row]);
+        const value = readValue(sourceId, frames[row], row);
 
         if (!Number.isFinite(value)) {
           continue;

@@ -30,7 +30,9 @@ const UNIT_FORMATS = {
   ms: { decimals: 0 },
   "µs": { decimals: 0 },
   g: { decimals: 2 },
-  deg: { decimals: 0 }
+  deg: { decimals: 0 },
+  "km/h": { decimals: 0 },
+  m: { decimals: 1 }
 };
 
 // rcCommand channel knowledge: index → { field, name }.
@@ -50,7 +52,9 @@ export const RC_CHANNELS = [
 const RC_BY_FIELD = new Map(RC_CHANNELS.map((c) => [c.field, c]));
 
 // Derived telemetry entries: label, unit, read from the
-// sampler state (see sceneState.js). Booleans are flags.
+// sampler state (see sceneState.js). Booleans are flags,
+// text entries render a formatted string. GPS entries read
+// the sampler's last-fix GPS values (frameSampler.js).
 export const DERIVED_ENTRIES = [
   { key: "armed", label: "Armed", kind: "flag" },
   { key: "motorOn", label: "Motor On", kind: "flag" },
@@ -61,7 +65,12 @@ export const DERIVED_ENTRIES = [
   { key: "current", label: "Current", unit: "A", kind: "number" },
   { key: "maxCurrent", label: "Max Current", unit: "A", kind: "number" },
   { key: "escTemp", label: "ESC Temp", unit: "°C", kind: "number" },
-  { key: "motorPct", label: "Motor %", unit: "%", kind: "number" }
+  { key: "motorPct", label: "Motor %", unit: "%", kind: "number" },
+  { key: "gpsSpeed", label: "GPS Speed", unit: "km/h", kind: "number" },
+  { key: "gpsAltitude", label: "GPS Altitude", unit: "m", kind: "number" },
+  { key: "gpsSats", label: "GPS Sats", unit: null, kind: "number" },
+  { key: "gpsCourse", label: "GPS Course", unit: "deg", kind: "number" },
+  { key: "gpsCoords", label: "GPS Coords", kind: "text" }
 ];
 
 const DERIVED_BY_KEY = new Map(DERIVED_ENTRIES.map((e) => [e.key, e]));
@@ -108,6 +117,16 @@ export function describeSource(sourceId) {
 
     if (!entry) {
       return null;
+    }
+
+    if (entry.kind === "text") {
+      return {
+        kind: "text",
+        label: entry.label,
+        unit: null,
+        scale: 1,
+        format: null
+      };
     }
 
     return {

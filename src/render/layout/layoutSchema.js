@@ -112,6 +112,7 @@ export function itemDefaults(type) {
         customText: "Custom text",
         showLabel: false,
         alignment: "stacked",
+        labelOverride: null,
         labelSize: null,
         labelColor: null,
         valueSize: null,
@@ -365,10 +366,15 @@ function normalizeSource(value, item, warnings) {
 
   // Flags are text-only: a bar/donut bound to a flag is
   // coerced to a numeric default rather than silently
-  // rendering nothing.
-  if ((item.type === "bar" || item.type === "donut") && isFlagSource(id)) {
-    warnings.push(`item ${item.id}: flag source not renderable as ${item.type}`);
-    return item.type === "bar" ? "derived:motorPct" : "derived:rpm";
+  // rendering nothing. Text-kind sources (GPS coords) get
+  // the same treatment — they carry no numeric value.
+  if (item.type === "bar" || item.type === "donut") {
+    const desc = describeSource(id);
+
+    if (isFlagSource(id) || desc?.kind === "text") {
+      warnings.push(`item ${item.id}: non-numeric source not renderable as ${item.type}`);
+      return item.type === "bar" ? "derived:motorPct" : "derived:rpm";
+    }
   }
 
   // Percentage lock (source-driven): percent mode forced on

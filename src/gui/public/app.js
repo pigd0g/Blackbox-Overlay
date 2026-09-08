@@ -853,6 +853,7 @@ const ITEM_DEFAULT_PROPS = {
     customText: "Custom text",
     showLabel: false,
     alignment: "stacked",
+    labelOverride: null,
     labelSize: null,
     labelColor: null,
     valueSize: null,
@@ -1021,6 +1022,16 @@ const DERIVED_ENTRIES = [
   { id: "derived:motorPct", label: "Motor %", kind: "number" },
 ];
 
+// GPS entries ride their own group and are only offered when
+// the selected flight carries GPS telemetry (summary.gps).
+const GPS_ENTRIES = [
+  { id: "derived:gpsSpeed", label: "GPS Speed (km/h)", kind: "number" },
+  { id: "derived:gpsAltitude", label: "GPS Altitude (m)", kind: "number" },
+  { id: "derived:gpsSats", label: "GPS Sats", kind: "number" },
+  { id: "derived:gpsCourse", label: "GPS Course (deg)", kind: "number" },
+  { id: "derived:gpsCoords", label: "GPS Coords", kind: "text" },
+];
+
 const RC_ENTRIES = [
   { id: "field:rcCommand[0]", label: "Roll" },
   { id: "field:rcCommand[1]", label: "Pitch" },
@@ -1046,6 +1057,7 @@ function renderTelemetryPanel() {
 
   const groups = [
     { title: "DERIVED", entries: DERIVED_ENTRIES },
+    { title: "GPS", entries: state.hasGps ? GPS_ENTRIES : [] },
     { title: "RC CHANNELS", entries: RC_ENTRIES },
     {
       title: "FIELDS",
@@ -1378,6 +1390,12 @@ const SOURCE_OPTIONS = () => {
     }
   }
 
+  if (state.hasGps) {
+    for (const entry of GPS_ENTRIES) {
+      options.push({ value: entry.id, label: entry.label });
+    }
+  }
+
   for (const name of state.fields) {
     if (!RAW_SKIP.has(name))
       options.push({ value: `field:${name}`, label: name });
@@ -1588,6 +1606,14 @@ function barDonutSources() {
   for (const entry of DERIVED_ENTRIES) {
     if (entry.kind === "number")
       options.push({ value: entry.id, label: entry.label });
+  }
+
+  if (state.hasGps) {
+    for (const entry of GPS_ENTRIES) {
+      // Coords are text-only; numerics work in bar/donut.
+      if (entry.kind === "number")
+        options.push({ value: entry.id, label: entry.label });
+    }
   }
 
   for (const name of state.fields) {
@@ -2357,6 +2383,7 @@ async function loadLog(path) {
       payload.flights.find((f) => f.renderable) ?? payload.flights[0];
 
     state.fields = first?.mainFields ?? [];
+    state.hasGps = first?.gps === true;
     renderTelemetryPanel();
 
     els.teleFilter.disabled = false;

@@ -100,7 +100,7 @@ test("rc channel captions name the pair", () => {
 test("rc + derived catalogs are complete", () => {
   assert.equal(RC_CHANNELS.length, 5);
   assert.equal(RC_CHANNELS.map((c) => c.name).join(","), "Roll,Pitch,Yaw,Collective,Throttle");
-  assert.equal(DERIVED_ENTRIES.length, 10);
+  assert.equal(DERIVED_ENTRIES.length, 15);
 
   const keys = DERIVED_ENTRIES.map((e) => e.key);
 
@@ -171,6 +171,23 @@ test("stats cache: repeated reads are cheap and stable", () => {
   const stats = createFieldStats(rampFlight());
 
   assert.deepEqual(stats.flightStats("field:Ibat"), stats.flightStats("field:Ibat"));
+});
+
+test("text items accept labelOverride (no drop warning)", () => {
+  const doc = { items: [] };
+  doc.items.push(createItem("text", { col: 0, row: 0, source: "field:Vbat", labelOverride: "PACK VOLTS" }));
+
+  const { layout, warnings } = normalizeLayout(doc);
+
+  assert.equal(layout.items[0].props.labelOverride, "PACK VOLTS");
+  assert.ok(!warnings.some((w) => /labelOverride/.test(w)));
+
+  // null clears back to the default label.
+  const cleared = normalizeLayout({
+    items: [{ ...layout.items[0], props: { ...layout.items[0].props, labelOverride: null } }]
+  });
+
+  assert.equal(cleared.layout.items[0].props.labelOverride, null);
 });
 
 // ------------------------------------------------------

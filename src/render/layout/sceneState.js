@@ -26,6 +26,21 @@ const FLAG_TEXT = {
   "derived:throttle": ["THROTTLE UP", "THROTTLE DOWN"]
 };
 
+// Text-kind derived sources: the value is the display string.
+// Coordinates arrive raw ×1e7 (degrees); 6 decimals ≈ 11 cm.
+const TEXT_SOURCES = {
+  "derived:gpsCoords": (state) => {
+    const lat = state.derived ? state.derived("gpsLat") : null;
+    const lon = state.derived ? state.derived("gpsLon") : null;
+
+    if (lat === null || lat === undefined || lon === null || lon === undefined) {
+      return null;
+    }
+
+    return `${(lat * 1e-7).toFixed(6)}, ${(lon * 1e-7).toFixed(6)}`;
+  }
+};
+
 /**
  * Build the scene state for one moment.
  *
@@ -177,6 +192,14 @@ export function resolveItemValue(item, state) {
     const on = state.toggles?.[keyFromSource(source)] === true;
 
     return { value: on ? 1 : 0, text: null, flag: on ? flagTexts[0] : flagTexts[1] };
+  }
+
+  const textReader = TEXT_SOURCES[source];
+
+  if (textReader) {
+    const text = textReader(state);
+
+    return { value: null, text: text ?? "--", flag: null };
   }
 
   let value = null;

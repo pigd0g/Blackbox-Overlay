@@ -2374,6 +2374,10 @@ async function loadLog(path) {
     state.previewJob = (state.previewJob ?? 0) + 1;
     renderSyncReadouts(null);
 
+    // A new log invalidates any edited output name: the old
+    // leaf must not leak into the next default.
+    delete els.outputInput.dataset.touched;
+
     els.logPill.hidden = false;
     els.logPill.textContent = payload.file.split(/[\\/]/).pop();
     els.logPill.title = payload.file;
@@ -2528,9 +2532,21 @@ function updateOutputDefault() {
       : ".mp4";
 
     els.outputInput.value = `out/${leaf}-flight${state.flight}-overlay${extension}`;
-    els.outputInput.dataset.touched = "1";
-  } else {
-    updateOutputExtension();
+    return;
+  }
+
+  // User-edited, but still following flight changes while the
+  // value keeps the auto-derived <leaf>-flight<N>-overlay
+  // shape; a fully custom name is left alone. The extension
+  // rides format changes (updateOutputExtension), not this.
+  const current = els.outputInput.value.trim();
+  const swapped = current.replace(
+    /-flight\d+-overlay(?=\.(?:mp4|mov|webm)$)/i,
+    `-flight${state.flight}-overlay`,
+  );
+
+  if (swapped !== current) {
+    els.outputInput.value = swapped;
   }
 }
 

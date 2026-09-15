@@ -305,6 +305,14 @@ test("normalizeSyncConfig canonicalizes fps from the choice list", () => {
   );
   assert.deepEqual(
     normalizeSyncConfig({ calculate: { fps: 59.94 } }, warnings).calculate.fps,
+    59.94
+  );
+  assert.deepEqual(
+    normalizeSyncConfig({ calculate: { fps: 29.97 } }, warnings).calculate.fps,
+    29.97
+  );
+  assert.deepEqual(
+    normalizeSyncConfig({ calculate: { fps: 59.97 } }, warnings).calculate.fps,
     60
   );
   assert.ok(warnings.some((w) => /footage fps/.test(w)));

@@ -44,7 +44,7 @@
 export const SYNC_MODES = ["off", "calculate", "manual"];
 
 /** External footage FPS choices for Calculate mode. */
-export const SYNC_FPS_CHOICES = [30, 60, 120];
+export const SYNC_FPS_CHOICES = [29.97, 30, 59.94, 60, 120];
 export const SYNC_FPS_DEFAULT = 60;
 
 /** Manual drift band: clockScale = 1 + drift/100 must stay > 0. */
